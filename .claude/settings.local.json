@@ -22,9 +22,17 @@
       "Bash(claude settings)",
       "Bash(claude config --help)",
       "Bash(claude config list)",
-      "mcp__notionApi__API-get-block-children"
+      "mcp__notionApi__API-get-block-children",
+      "Bash(move:*)",
+      "Bash(move agent-suggestions.md unimportant )",
+      "Bash(move start-app.sh unimportant )",
+      "Bash(move seed-database.sh unimportant )",
+      "Bash(move test-level-system.js unimportant)"
     ],
     "deny": [],
-    "defaultMode": "acceptEdits"
+    "defaultMode": "acceptEdits",
+    "additionalDirectories": [
+      "C:\\c\\Users\\morit\\.vscode\\BA"
+    ]
   }
 }

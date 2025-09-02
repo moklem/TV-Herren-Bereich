@@ -2,7 +2,7 @@
   "metadata": {
     "projectName": "volleyball-app",
     "description": "Eine Progressive Web App zur Verwaltung von Volleyball-Teams und zur Integration von Jugendspielern",
-    "version": "1.9.0",
+    "version": "1.9.2",
     "type": "Progressive Web Application",
     "primaryLanguage": "JavaScript",
     "techStack": {
@@ -34,7 +34,7 @@
       "database": "MongoDB Atlas",
       "region": "Frankfurt"
     },
-    "lastAnalyzed": "2025-08-16T14:30:00.000Z"
+    "lastAnalyzed": "2025-09-02T15:00:00.000Z"
   },
   "developmentPhase": "production",
   "completionPercentage": 99,
@@ -309,6 +309,61 @@
   ],
   "inProgressFeatures": [],
   "recentChanges": [
+    {
+      "timestamp": "2025-09-02T15:00:00.000Z",
+      "filesModified": [
+        ".env.example",
+        "README.md",
+        "project-status.json"
+      ],
+      "filesAdded": [],
+      "filesDeleted": [],
+      "summary": "Updated environment configuration and added self-hosting deployment guidance",
+      "changes": [
+        "Completely rewrote root .env.example file with comprehensive environment variables",
+        "Added MongoDB Atlas configuration with connection string format",
+        "Included Brevo email service configuration as recommended free option (300 emails/day)",
+        "Added alternative email methods: Gmail/Outlook with App Password, Custom SMTP",
+        "Included Web Push VAPID keys configuration for push notifications",
+        "Added coach registration password security variable",
+        "Updated README.md with strong warnings about local development testing",
+        "Added comprehensive self-hosting instructions for Render.com, Railway.app, and Vercel",
+        "Included step-by-step Render.com deployment guide for both frontend and backend",
+        "Added Railway CLI commands for quick deployment",
+        "Listed known local development problems: HTTPS requirements, email config, PWA limitations",
+        "Emphasized self-hosting as recommended approach for testing and development",
+        "Updated test environment information with access details"
+      ],
+      "impact": "Developers now have clear, up-to-date environment configuration examples and understand the challenges of local development. The comprehensive self-hosting guides enable easy deployment testing on multiple platforms. This addresses the reality that local development hasn't been maintained, while providing practical alternatives for testing and development work. The updated .env.example includes all necessary configuration options for production deployment including email services, push notifications, and security settings."
+    },
+    {
+      "timestamp": "2025-09-02T14:30:00.000Z",
+      "filesModified": [
+        "README.md",
+        "project-status.json"
+      ],
+      "filesAdded": [
+        "unimportant/"
+      ],
+      "filesDeleted": [],
+      "summary": "Repository cleanup and comprehensive README.md update",
+      "changes": [
+        "Created 'unimportant' folder and moved 11 secondary files to clean up root directory",
+        "Moved BREVO_EMAIL_SETUP.md, PASSWORD_RESET_SETUP.md, POSITION_STATISTICS_FEATURE.md to unimportant/",
+        "Moved RECURRING_EVENTS_FEATURE.md, RENDER_DEPLOYMENT.md, agent-suggestions.md to unimportant/",
+        "Moved helper scripts: start-app.bat/sh, seed-database.bat/sh, test-level-system.js to unimportant/",
+        "Completely rewrote README.md with comprehensive project information and current features",
+        "Added version badges, live application links, and production status indicators",
+        "Updated technology stack with exact versions and comprehensive feature descriptions",
+        "Added detailed sections for advanced features: VB-15 rating system, VB-18 analytics, VB-19 progress tracking",
+        "Included project statistics: 142 files, 43,500+ lines of code, 45+ components",
+        "Updated project structure to reflect cleaned repository organization",
+        "Added proper deployment information for Render.com infrastructure",
+        "Enhanced development setup instructions with test environment details",
+        "Added security features, contribution guidelines, and contact information"
+      ],
+      "impact": "Significantly improved repository organization and developer onboarding experience. Root directory is now clean with only essential files visible. README.md now accurately represents the sophisticated volleyball management system with all its advanced features like the German league rating system, training pools, progress analytics, and achievement system. New developers can quickly understand the project scope, technology stack, and deployment architecture. The 'unimportant' folder keeps secondary documentation accessible while maintaining a professional repository appearance."
+    },
     {
       "timestamp": "2025-08-16T14:30:00.000Z",
       "filesModified": [
