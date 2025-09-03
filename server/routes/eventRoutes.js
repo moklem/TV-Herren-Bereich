@@ -4,6 +4,9 @@ const { protect, coach, player } = require('../middleware/authMiddleware');
 const Event = require('../models/Event');
 const Team = require('../models/Team');
 const User = require('../models/User');
+const { sendGuestInvitation } = require('../controllers/notificationController');
+const { scheduleEventNotifications } = require('../utils/notificationQueue');
+const { processTrainingPoolAutoInvite, processVotingDeadlineAutoDecline } = require('../utils/trainingPoolAutoInvite');
 
 // Helper function to generate recurring events
 const generateRecurringEvents = (baseEvent, pattern, endDate) => {
@@ -14,6 +17,14 @@ const generateRecurringEvents = (baseEvent, pattern, endDate) => {
   
   // Calculate the time difference between start and end
   const timeDiff = endDateTime - startDate;
+  
+  // Calculate voting deadline offset from start time if it exists
+  let votingDeadlineOffset = null;
+  if (baseEvent.votingDeadline) {
+    const baseVotingDeadline = new Date(baseEvent.votingDeadline);
+    const baseStartTime = new Date(baseEvent.startTime);
+    votingDeadlineOffset = baseVotingDeadline - baseStartTime;
+  }
   
   // Generate events based on pattern
   let currentDate = new Date(startDate);
@@ -41,6 +52,11 @@ const generateRecurringEvents = (baseEvent, pattern, endDate) => {
       isRecurringInstance: true,
       originalStartTime: baseEvent.startTime
     };
+    
+    // Adjust voting deadline based on the offset from start time
+    if (votingDeadlineOffset !== null) {
+      eventData.votingDeadline = new Date(currentDate.getTime() + votingDeadlineOffset);
+    }
     
     events.push(eventData);
     
@@ -74,8 +90,22 @@ router.post('/', protect, coach, async (req, res) => {
       isRecurring,
       recurringPattern,
       recurringEndDate,
-      organizingTeam
+      organizingTeam,
+      organizingTeams,
+      votingDeadline,
+      notificationSettings,
+      trainingPoolAutoInvite
     } = req.body;
+
+    // Debug logging for training pool auto-invite
+    console.log('Creating event with trainingPoolAutoInvite:', JSON.stringify(trainingPoolAutoInvite, null, 2));
+    
+    // Validate trainingPoolAutoInvite - if poolId is empty, disable auto-invite
+    if (trainingPoolAutoInvite?.enabled && !trainingPoolAutoInvite?.poolId) {
+      console.warn('Auto-invite enabled but no pool selected, disabling auto-invite');
+      trainingPoolAutoInvite.enabled = false;
+      delete trainingPoolAutoInvite.poolId; // Remove empty poolId to prevent validation error
+    }
 
     // Handle both single team (legacy) and multiple teams
     const teamIds = teams || (team ? [team] : []);
@@ -84,11 +114,14 @@ router.post('/', protect, coach, async (req, res) => {
       return res.status(400).json({ message: 'At least one team is required' });
     }
 
-    // Determine organizing team (the team the coach belongs to)
-    let organizingTeamId = organizingTeam;
+    // Handle organizing teams
+    let organizingTeamIds = organizingTeams || [];
+    if (organizingTeam && !organizingTeamIds.includes(organizingTeam)) {
+      organizingTeamIds.push(organizingTeam);
+    }
     
-    if (!organizingTeamId) {
-      // Find the first team where the user is a coach
+    // If no organizing teams specified, use teams where user is a coach
+    if (organizingTeamIds.length === 0) {
       const coachTeams = await Team.find({ 
         _id: { $in: teamIds },
         coaches: req.user._id 
@@ -100,13 +133,17 @@ router.post('/', protect, coach, async (req, res) => {
         });
       }
       
-      organizingTeamId = coachTeams[0]._id;
+      organizingTeamIds = coachTeams.map(team => team._id);
     } else {
-      // Verify the coach is authorized for the organizing team
-      const orgTeam = await Team.findById(organizingTeamId);
-      if (!orgTeam || !orgTeam.coaches.includes(req.user._id)) {
+      // Verify the coach is authorized for at least one organizing team
+      const authorizedOrgTeams = await Team.find({
+        _id: { $in: organizingTeamIds },
+        coaches: req.user._id
+      });
+      
+      if (authorizedOrgTeams.length === 0) {
         return res.status(403).json({ 
-          message: 'You must be a coach of the organizing team' 
+          message: 'You must be a coach of at least one organizing team' 
         });
       }
     }
@@ -133,6 +170,9 @@ router.post('/', protect, coach, async (req, res) => {
     )];
 
     // Base event data
+    // Process voting deadline - always use the provided date/time value
+    let processedVotingDeadline = votingDeadline;
+
     const baseEventData = {
       title,
       type,
@@ -140,15 +180,30 @@ router.post('/', protect, coach, async (req, res) => {
       endTime,
       location,
       teams: teamIds,
-      organizingTeam: organizingTeamId,
-      team: organizingTeamId, // Keep for backward compatibility
+      organizingTeam: organizingTeamIds[0], // Keep first one for backward compatibility
+      organizingTeams: organizingTeamIds,
+      team: organizingTeamIds[0], // Keep for backward compatibility
       description,
       createdBy: req.user._id,
-      invitedPlayers: invitedPlayers || teamExists.players,
+      invitedPlayers: invitedPlayers || allTeamPlayers,
       attendingPlayers: [],
       declinedPlayers: [],
+      unsurePlayers: [],
+      playerResponses: [],
       guestPlayers: [],
-      isOpenAccess: isOpenAccess || false
+      votingDeadline: processedVotingDeadline || null,
+      isOpenAccess: isOpenAccess || false,
+      notificationSettings: notificationSettings || {
+        enabled: true,
+        reminderTimes: [
+          { hours: 24, minutes: 0 },
+          { hours: 1, minutes: 0 }
+        ],
+        customMessage: ''
+      },
+      trainingPoolAutoInvite: trainingPoolAutoInvite || {
+        enabled: false
+      }
     };
 
     let createdEvents = [];
@@ -192,6 +247,11 @@ router.post('/', protect, coach, async (req, res) => {
     }
 
     if (createdEvents.length > 0) {
+      // Schedule notifications for all created events
+      for (const event of createdEvents) {
+        await scheduleEventNotifications(event._id);
+      }
+      
       res.status(201).json({
         message: isRecurring ? `${createdEvents.length} recurring events created` : 'Event created',
         events: createdEvents,
@@ -228,10 +288,16 @@ router.get('/', protect, async (req, res) => {
         .populate('team', 'name type')
         .populate('teams', 'name type')
         .populate('organizingTeam', 'name type')
+        .populate('organizingTeams', 'name type')
         .populate('invitedPlayers', 'name email position')
         .populate('attendingPlayers', 'name email position')
         .populate('declinedPlayers', 'name email position')
+        .populate('unsurePlayers', 'name email position')
         .populate('uninvitedPlayers', 'name email position')
+        .populate({
+          path: 'playerResponses.player',
+          select: 'name email position'
+        })
         .populate({
           path: 'guestPlayers.player',
           select: 'name email position'
@@ -240,6 +306,7 @@ router.get('/', protect, async (req, res) => {
           path: 'guestPlayers.fromTeam',
           select: 'name type'
         })
+        .populate('trainingPoolAutoInvite.poolId', 'name type leagueLevel')
         .sort({ startTime: 1 });
     } else {
       // For players (Spieler and Jugendspieler), get events where:
@@ -272,10 +339,16 @@ router.get('/', protect, async (req, res) => {
         .populate('team', 'name type')
         .populate('teams', 'name type')
         .populate('organizingTeam', 'name type')
+        .populate('organizingTeams', 'name type')
         .populate('invitedPlayers', 'name email position')
         .populate('attendingPlayers', 'name email position')
         .populate('declinedPlayers', 'name email position')
+        .populate('unsurePlayers', 'name email position')
         .populate('uninvitedPlayers', 'name email position')
+        .populate({
+          path: 'playerResponses.player',
+          select: 'name email position'
+        })
         .populate({
           path: 'guestPlayers.player',
           select: 'name email position'
@@ -284,6 +357,7 @@ router.get('/', protect, async (req, res) => {
           path: 'guestPlayers.fromTeam',
           select: 'name type'
         })
+        .populate('trainingPoolAutoInvite.poolId', 'name type leagueLevel')
         .sort({ startTime: 1 });
     }
     
@@ -303,15 +377,22 @@ router.get('/:id', protect, async (req, res) => {
       .populate('team', 'name type')
       .populate('teams', 'name type')
       .populate('organizingTeam', 'name type')
+      .populate('organizingTeams', 'name type')
       .populate('createdBy', 'name email')
       .populate('invitedPlayers', 'name email position')
       .populate('attendingPlayers', 'name email position')
       .populate('declinedPlayers', 'name email position')
+      .populate('unsurePlayers', 'name email position')
       .populate('uninvitedPlayers', 'name email position')
+      .populate({
+        path: 'playerResponses.player',
+        select: 'name email position'
+      })
       .populate({
         path: 'guestPlayers.player',
         select: 'name email position'
       })
+      .populate('trainingPoolAutoInvite.poolId', 'name type leagueLevel')
       .populate({
         path: 'guestPlayers.fromTeam',
         select: 'name type'
@@ -366,22 +447,46 @@ router.put('/:id', protect, coach, async (req, res) => {
       isOpenAccess,
       team,
       teams,
-      organizingTeam, 
+      organizingTeam,
+      organizingTeams, 
       updateRecurring,
       convertToRecurring,
       recurringPattern,
       recurringEndDate,
-      weekday
+      weekday,
+      votingDeadline,
+      notificationSettings,
+      trainingPoolAutoInvite
     } = req.body;
+    
+    // Debug logging for training pool auto-invite
+    console.log('Updating event with trainingPoolAutoInvite:', JSON.stringify(trainingPoolAutoInvite, null, 2));
+    
+    // Validate trainingPoolAutoInvite - if poolId is empty, disable auto-invite
+    if (trainingPoolAutoInvite?.enabled && !trainingPoolAutoInvite?.poolId) {
+      console.warn('Auto-invite enabled but no pool selected, disabling auto-invite');
+      trainingPoolAutoInvite.enabled = false;
+      delete trainingPoolAutoInvite.poolId; // Remove empty poolId to prevent validation error
+    }
     
     const event = await Event.findById(req.params.id);
     
     if (event) {
-      // Check if coach is authorized to update this event
-      // Check if coach is authorized to update this event (must be coach of organizing team)
-      const orgTeam = await Team.findById(event.organizingTeam || event.team);
+      // Check if coach is authorized to update this event (must be coach of at least one organizing team)
+      let isAuthorized = false;
       
-      if (!orgTeam || !orgTeam.coaches.includes(req.user._id)) {
+      if (event.organizingTeams && event.organizingTeams.length > 0) {
+        const orgTeams = await Team.find({
+          _id: { $in: event.organizingTeams },
+          coaches: req.user._id
+        });
+        isAuthorized = orgTeams.length > 0;
+      } else if (event.organizingTeam) {
+        const orgTeam = await Team.findById(event.organizingTeam);
+        isAuthorized = orgTeam && orgTeam.coaches.includes(req.user._id);
+      }
+      
+      if (!isAuthorized) {
         return res.status(403).json({ message: 'Not authorized to update this event' });
       }
       
@@ -411,8 +516,18 @@ router.put('/:id', protect, coach, async (req, res) => {
         if (invitedPlayers) event.invitedPlayers = invitedPlayers;
         if (isOpenAccess !== undefined) event.isOpenAccess = isOpenAccess;
         if (team) event.team = team;
+        if (teams) event.teams = teams;
+        if (organizingTeam) event.organizingTeam = organizingTeam;
+        if (organizingTeams) event.organizingTeams = organizingTeams;
+        if (votingDeadline !== undefined) event.votingDeadline = votingDeadline;
+        if (notificationSettings) event.notificationSettings = notificationSettings;
+        if (trainingPoolAutoInvite !== undefined) event.trainingPoolAutoInvite = trainingPoolAutoInvite;
         
         await event.save();
+        console.log('Event saved with trainingPoolAutoInvite:', JSON.stringify(event.trainingPoolAutoInvite, null, 2));
+        
+        // Schedule notifications for the parent event
+        await scheduleEventNotifications(event._id);
         
         // Generate recurring instances
         const baseEventData = {
@@ -422,14 +537,21 @@ router.put('/:id', protect, coach, async (req, res) => {
           endTime: event.endTime,
           location: event.location,
           team: event.team,
+          teams: event.teams,
           organizingTeam: event.organizingTeam || event.team,
+          organizingTeams: event.organizingTeams || [event.organizingTeam || event.team],
           description: event.description,
           createdBy: event.createdBy,
           invitedPlayers: event.invitedPlayers,
           attendingPlayers: [],
           declinedPlayers: [],
+          unsurePlayers: [],
+          playerResponses: [],
           guestPlayers: [],
-          isOpenAccess: event.isOpenAccess
+          isOpenAccess: event.isOpenAccess,
+          votingDeadline: event.votingDeadline,
+          notificationSettings: event.notificationSettings,
+          trainingPoolAutoInvite: event.trainingPoolAutoInvite
         };
         
         const recurringInstances = generateRecurringEvents(
@@ -440,12 +562,15 @@ router.put('/:id', protect, coach, async (req, res) => {
         
         // Create instances (skip first as it's the parent)
         for (let i = 1; i < recurringInstances.length; i++) {
-          await Event.create({
+          const instance = await Event.create({
             ...recurringInstances[i],
             recurringGroupId: event._id,
             isRecurring: false,
             isRecurringInstance: true
           });
+          
+          // Schedule notifications for each instance
+          await scheduleEventNotifications(instance._id);
         }
         
         res.json({ message: 'Event converted to recurring series', event });
@@ -460,8 +585,12 @@ router.put('/:id', protect, coach, async (req, res) => {
         if (invitedPlayers) updateData.invitedPlayers = invitedPlayers;
         if (isOpenAccess !== undefined) updateData.isOpenAccess = isOpenAccess;
         if (team) updateData.team = team;
-        if (teams) event.teams = teams;
-        if (organizingTeam) event.organizingTeam = organizingTeam;
+        if (notificationSettings) updateData.notificationSettings = notificationSettings;
+        if (teams) updateData.teams = teams;
+        if (organizingTeam) updateData.organizingTeam = organizingTeam;
+        if (organizingTeams) updateData.organizingTeams = organizingTeams;
+        if (trainingPoolAutoInvite !== undefined) updateData.trainingPoolAutoInvite = trainingPoolAutoInvite;
+        // Don't update votingDeadline directly here - will handle it per instance below
         
         // Update all events in the recurring group
         await Event.updateMany(
@@ -469,8 +598,20 @@ router.put('/:id', protect, coach, async (req, res) => {
           updateData
         );
         
-        // If updating time or weekday, we need to handle each instance individually
-        if (startTime || endTime || weekday !== undefined) {
+        // Schedule notifications for all events in the recurring group
+        const recurringEvents = await Event.find({ 
+          $or: [
+            { _id: event.recurringGroupId },
+            { recurringGroupId: event.recurringGroupId }
+          ]
+        });
+        
+        for (const recurringEvent of recurringEvents) {
+          await scheduleEventNotifications(recurringEvent._id);
+        }
+        
+        // If updating time, weekday, or voting deadline, we need to handle each instance individually
+        if (startTime || endTime || weekday !== undefined || votingDeadline !== undefined) {
           const recurringEvents = await Event.find({ 
             $or: [
               { _id: event.recurringGroupId }, // Include parent
@@ -525,6 +666,25 @@ router.put('/:id', protect, coach, async (req, res) => {
               }
             }
             
+            // Update voting deadline if provided
+            if (votingDeadline !== undefined) {
+              if (votingDeadline) {
+                // Calculate offset from the original event's start time and apply to each recurring event
+                const votingDeadlineDate = new Date(votingDeadline);
+                const originalEventStartTime = new Date(event.startTime);
+                const eventStartTime = new Date(recurringEvent.startTime);
+                
+                // Calculate the offset between the voting deadline and the original event start time
+                const offset = votingDeadlineDate.getTime() - originalEventStartTime.getTime();
+                
+                // Apply the same offset to this recurring event
+                recurringEvent.votingDeadline = new Date(eventStartTime.getTime() + offset);
+              } else {
+                // Clear voting deadline
+                recurringEvent.votingDeadline = null;
+              }
+            }
+            
             await recurringEvent.save();
           }
         }
@@ -542,9 +702,17 @@ router.put('/:id', protect, coach, async (req, res) => {
         if (isOpenAccess !== undefined) event.isOpenAccess = isOpenAccess;
         if (team) event.team = team;
         if (teams) event.teams = teams;
-        if (organizingTeam) event.organizingTeam = organizingTeam;  
+        if (organizingTeam) event.organizingTeam = organizingTeam;
+        if (organizingTeams) event.organizingTeams = organizingTeams;
+        if (votingDeadline !== undefined) event.votingDeadline = votingDeadline;
+        if (notificationSettings) event.notificationSettings = notificationSettings;
+        if (trainingPoolAutoInvite !== undefined) event.trainingPoolAutoInvite = trainingPoolAutoInvite;
         
         const updatedEvent = await event.save();
+        
+        // Schedule notifications for the updated event
+        await scheduleEventNotifications(updatedEvent._id);
+        
         res.json(updatedEvent);
       }
     } else {
@@ -565,10 +733,21 @@ router.delete('/:id', protect, coach, async (req, res) => {
     const event = await Event.findById(req.params.id);
     
     if (event) {
-      // Check if coach is authorized to delete this event (must be coach of organizing team)
-      const orgTeam = await Team.findById(event.organizingTeam || event.team);
+      // Check if coach is authorized to delete this event (must be coach of at least one organizing team)
+      let isAuthorized = false;
       
-      if (!orgTeam || !orgTeam.coaches.includes(req.user._id)) {
+      if (event.organizingTeams && event.organizingTeams.length > 0) {
+        const orgTeams = await Team.find({
+          _id: { $in: event.organizingTeams },
+          coaches: req.user._id
+        });
+        isAuthorized = orgTeams.length > 0;
+      } else if (event.organizingTeam) {
+        const orgTeam = await Team.findById(event.organizingTeam || event.team);
+        isAuthorized = orgTeam && orgTeam.coaches.includes(req.user._id);
+      }
+      
+      if (!isAuthorized) {
         return res.status(403).json({ message: 'Not authorized to delete this event' });
       }
       
@@ -597,6 +776,11 @@ router.post('/:id/accept', protect, player, async (req, res) => {
     const event = await Event.findById(req.params.id);
     
     if (event) {
+      // Check if voting deadline has passed
+      if (event.isVotingDeadlinePassed()) {
+        return res.status(400).json({ message: 'Die Abstimmungsfrist ist abgelaufen' });
+      }
+      
       // Get the team to check if user is a member
       const team = await Team.findById(event.team);
       const isTeamMember = team.players.some(p => p.toString() === req.user._id.toString());
@@ -627,9 +811,20 @@ router.post('/:id/accept', protect, player, async (req, res) => {
 // @access  Private/Player
 router.post('/:id/decline', protect, player, async (req, res) => {
   try {
+    const { reason } = req.body;
+    
+    if (!reason || reason.trim() === '') {
+      return res.status(400).json({ message: 'Grund für Absage ist erforderlich' });
+    }
+    
     const event = await Event.findById(req.params.id);
     
     if (event) {
+      // Check if voting deadline has passed
+      if (event.isVotingDeadlinePassed()) {
+        return res.status(400).json({ message: 'Die Abstimmungsfrist ist abgelaufen' });
+      }
+      
       // Get the team to check if user is a member
       const team = await Team.findById(event.team);
       const isTeamMember = team.players.some(p => p.toString() === req.user._id.toString());
@@ -642,10 +837,54 @@ router.post('/:id/decline', protect, player, async (req, res) => {
         return res.status(403).json({ message: 'Not invited to this event' });
       }
       
-      event.declineInvitation(req.user._id);
+      event.declineInvitation(req.user._id, reason);
       await event.save();
       
       res.json({ message: 'Invitation declined' });
+    } else {
+      res.status(404).json({ message: 'Event not found' });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/events/:id/unsure
+// @desc    Mark as unsure for event
+// @access  Private/Player
+router.post('/:id/unsure', protect, player, async (req, res) => {
+  try {
+    const { reason } = req.body;
+    
+    if (!reason || reason.trim() === '') {
+      return res.status(400).json({ message: 'Grund für Unsicherheit ist erforderlich' });
+    }
+    
+    const event = await Event.findById(req.params.id);
+    
+    if (event) {
+      // Check if voting deadline has passed
+      if (event.isVotingDeadlinePassed()) {
+        return res.status(400).json({ message: 'Die Abstimmungsfrist ist abgelaufen' });
+      }
+      
+      // Get the team to check if user is a member
+      const team = await Team.findById(event.team);
+      const isTeamMember = team.players.some(p => p.toString() === req.user._id.toString());
+      
+      // Check if player is invited to this event, if it's open access, or if they're a team member
+      if (!event.isOpenAccess && 
+          !event.isPlayerInvited(req.user._id) && 
+          !event.guestPlayers.some(g => g.player.toString() === req.user._id.toString()) &&
+          !isTeamMember) {
+        return res.status(403).json({ message: 'Not invited to this event' });
+      }
+      
+      event.markAsUnsure(req.user._id, reason);
+      await event.save();
+      
+      res.json({ message: 'Als unsicher markiert' });
     } else {
       res.status(404).json({ message: 'Event not found' });
     }
@@ -698,6 +937,20 @@ router.post('/:id/guests', protect, coach, async (req, res) => {
     
     await event.save();
     
+    // Send notification to the guest player
+    try {
+      await sendGuestInvitation(playerId, {
+        invitationId: event._id,
+        teamName: team.name,
+        eventTitle: event.title,
+        eventDate: event.startTime,
+        teamId: team._id
+      });
+    } catch (notificationError) {
+      console.error('Failed to send guest invitation notification:', notificationError);
+      // Don't fail the whole request if notification fails
+    }
+    
     res.json(event);
   } catch (error) {
     console.error(error);
@@ -733,6 +986,14 @@ router.delete('/:id/invitedPlayers/:playerId', protect, coach, async (req, res) 
     event.declinedPlayers = event.declinedPlayers.filter(
       p => p.toString() !== req.params.playerId
     );
+    event.unsurePlayers = event.unsurePlayers.filter(
+      p => p.toString() !== req.params.playerId
+    );
+    
+    // Remove from playerResponses if present
+    event.playerResponses = event.playerResponses.filter(
+      response => response.player.toString() !== req.params.playerId
+    );
 
     if (!event.uninvitedPlayers.includes(req.params.playerId)) {
       event.uninvitedPlayers.push(req.params.playerId);
@@ -745,6 +1006,7 @@ router.delete('/:id/invitedPlayers/:playerId', protect, coach, async (req, res) 
       .populate('team', 'name type')
       .populate('teams', 'name type')
       .populate('organizingTeam', 'name type')
+      .populate('organizingTeams', 'name type')
       .populate('createdBy', 'name email')
       .populate('invitedPlayers', 'name email position')
       .populate('attendingPlayers', 'name email position')
@@ -877,6 +1139,348 @@ router.delete('/:id/guests/:playerId', protect, coach, async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/events/:id/guest/accept
+// @desc    Accept guest player invitation
+// @access  Private/Player
+router.post('/:id/guest/accept', protect, async (req, res) => {
+  try {
+    const eventId = req.params.id;
+    const playerId = req.user._id;
+    
+    const event = await Event.findById(eventId);
+    
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found' });
+    }
+    
+    // Check if user is in guest players list
+    const isGuest = event.guestPlayers.some(g => g.player.toString() === playerId.toString());
+    
+    if (!isGuest) {
+      return res.status(400).json({ message: 'You are not invited as a guest for this event' });
+    }
+    
+    // Check if already attending
+    if (event.attendingPlayers.includes(playerId)) {
+      return res.status(400).json({ message: 'You are already attending this event' });
+    }
+    
+    // Check if this guest is from a training pool auto-invite
+    const isFromPoolAutoInvite = event.trainingPoolAutoInvite?.invitedPoolPlayers?.some(
+      p => p.toString() === playerId.toString()
+    );
+    
+    // If from pool auto-invite, check if minimum participants has been reached
+    if (isFromPoolAutoInvite && event.trainingPoolAutoInvite?.enabled) {
+      const currentParticipants = event.attendingPlayers.length + (event.unsurePlayers?.length || 0);
+      const minParticipants = event.trainingPoolAutoInvite.minParticipants || 6;
+      
+      if (currentParticipants >= minParticipants) {
+        return res.status(400).json({ 
+          message: 'Die Mindestteilnehmerzahl wurde bereits erreicht. Pool-Spieler können nicht mehr zusagen.' 
+        });
+      }
+    }
+    
+    // Add to attending players
+    event.attendingPlayers.push(playerId);
+    
+    // Remove from declined players if present
+    event.declinedPlayers = event.declinedPlayers.filter(p => p.toString() !== playerId.toString());
+    
+    await event.save();
+    
+    res.json({ message: 'Guest invitation accepted successfully' });
+  } catch (error) {
+    console.error('Accept guest invitation error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/events/:id/guest/decline
+// @desc    Decline guest player invitation
+// @access  Private/Player
+router.post('/:id/guest/decline', protect, async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const eventId = req.params.id;
+    const playerId = req.user._id;
+    
+    if (!reason || reason.trim() === '') {
+      return res.status(400).json({ message: 'Grund für Absage ist erforderlich' });
+    }
+    
+    const event = await Event.findById(eventId);
+    
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found' });
+    }
+    
+    // Check if user is in guest players list
+    const isGuest = event.guestPlayers.some(g => g.player.toString() === playerId.toString());
+    
+    if (!isGuest) {
+      return res.status(400).json({ message: 'You are not invited as a guest for this event' });
+    }
+    
+    // Check if already declined
+    if (event.declinedPlayers.includes(playerId)) {
+      return res.status(400).json({ message: 'You have already declined this event' });
+    }
+    
+    // Use the declineInvitation method which now handles reasons
+    event.declineInvitation(playerId, reason);
+    
+    await event.save();
+    
+    res.json({ message: 'Guest invitation declined successfully' });
+  } catch (error) {
+    console.error('Decline guest invitation error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/events/:id/guest/unsure
+// @desc    Mark guest as unsure for event
+// @access  Private/Player
+router.post('/:id/guest/unsure', protect, async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const eventId = req.params.id;
+    const playerId = req.user._id;
+    
+    if (!reason || reason.trim() === '') {
+      return res.status(400).json({ message: 'Grund für Unsicherheit ist erforderlich' });
+    }
+    
+    const event = await Event.findById(eventId);
+    
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found' });
+    }
+    
+    // Check if user is in guest players list
+    const isGuest = event.guestPlayers.some(g => g.player.toString() === playerId.toString());
+    
+    if (!isGuest) {
+      return res.status(400).json({ message: 'You are not invited as a guest for this event' });
+    }
+    
+    // Use the markAsUnsure method
+    event.markAsUnsure(playerId, reason);
+    
+    await event.save();
+    
+    res.json({ message: 'Als unsicher markiert' });
+  } catch (error) {
+    console.error('Mark guest unsure error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/events/:id/feedback
+// @desc    Check if quick feedback was already provided for an event
+// @access  Private/Coach
+router.get('/:id/feedback/check', protect, coach, async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id);
+    
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found' });
+    }
+    
+    // Check if this coach already provided feedback
+    const alreadyProvided = event.quickFeedback && event.quickFeedback.some(
+      feedback => feedback.coach.toString() === req.user._id.toString() && feedback.provided === true
+    );
+    
+    res.json({ 
+      alreadyProvided,
+      feedbackCount: event.quickFeedback ? event.quickFeedback.length : 0,
+      lastFeedback: event.quickFeedback && event.quickFeedback.length > 0 
+        ? event.quickFeedback[event.quickFeedback.length - 1] 
+        : null
+    });
+  } catch (error) {
+    console.error('Check feedback error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @desc    Log that quick feedback was provided for an event
+// @access  Private/Coach
+router.post('/:id/feedback', protect, coach, async (req, res) => {
+  try {
+    const { feedbackProvided, feedbackDate, coachId, coachMvp, absentPlayers } = req.body;
+    const event = await Event.findById(req.params.id);
+    
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found' });
+    }
+    
+    // Check if coach is authorized to provide feedback for this event
+    const team = await Team.findById(event.team);
+    if (!team.coaches.includes(req.user._id)) {
+      return res.status(403).json({ message: 'Not authorized to provide feedback for this event' });
+    }
+    
+    // Check if this coach already provided feedback
+    if (!event.quickFeedback) {
+      event.quickFeedback = [];
+    }
+    
+    const existingFeedback = event.quickFeedback.find(
+      feedback => feedback.coach.toString() === req.user._id.toString() && feedback.provided === true
+    );
+    
+    if (existingFeedback) {
+      return res.status(400).json({ 
+        message: 'Sie haben bereits Feedback für dieses Event abgegeben',
+        alreadyProvided: true 
+      });
+    }
+    
+    // Store feedback metadata on the event
+    event.quickFeedback.push({
+      coach: coachId || req.user._id,
+      providedAt: feedbackDate || new Date(),
+      provided: feedbackProvided,
+      coachMvp: coachMvp || null
+    });
+    
+    // Handle absent players - remove them from attendingPlayers
+    if (absentPlayers && absentPlayers.length > 0) {
+      // Remove absent players from attending list
+      event.attendingPlayers = event.attendingPlayers.filter(
+        playerId => !absentPlayers.includes(playerId.toString())
+      );
+      
+      // Add absent players to declined list if they were invited
+      absentPlayers.forEach(playerId => {
+        if (event.invitedPlayers.some(id => id.toString() === playerId)) {
+          if (!event.declinedPlayers.some(id => id.toString() === playerId)) {
+            event.declinedPlayers.push(playerId);
+          }
+        }
+      });
+    }
+    
+    await event.save();
+    
+    res.json({ message: 'Feedback logged successfully', event });
+  } catch (error) {
+    console.error('Log feedback error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/events/:id/trigger-auto-invite
+// @desc    Manually trigger auto-invite check for an event
+// @access  Private/Coach
+router.post('/:id/trigger-auto-invite', protect, coach, async (req, res) => {
+  try {
+    const result = await processTrainingPoolAutoInvite(req.params.id);
+    
+    if (result.success) {
+      res.json({
+        message: result.message,
+        playersInvited: result.playersInvited,
+        playerNames: result.playerNames
+      });
+    } else {
+      res.status(400).json({ message: result.message });
+    }
+  } catch (error) {
+    console.error('Error triggering auto-invite:', error);
+    res.status(500).json({ message: 'Fehler beim Auslösen der Auto-Einladung' });
+  }
+});
+
+// @route   POST /api/events/:id/process-voting-deadline
+// @desc    Manually process voting deadline (auto-decline and auto-invite)
+// @access  Private/Coach
+router.post('/:id/process-voting-deadline', protect, coach, async (req, res) => {
+  try {
+    const result = await processVotingDeadlineAutoDecline(req.params.id);
+    
+    if (result.success) {
+      res.json({
+        message: result.message,
+        playersDeclined: result.playersDeclined,
+        autoInviteResult: result.autoInviteResult
+      });
+    } else {
+      res.status(400).json({ message: result.message });
+    }
+  } catch (error) {
+    console.error('Error processing voting deadline:', error);
+    res.status(500).json({ message: 'Fehler beim Verarbeiten der Abstimmungsfrist' });
+  }
+});
+
+// @route   POST /api/events/:id/process-attendance
+// @desc    Manually process attendance for an event (admin/coach)
+// @access  Private/Coach
+router.post('/:id/process-attendance', protect, coach, async (req, res) => {
+  try {
+    const { checkAttendanceProcessing } = require('../utils/attendanceTrackingJob');
+    const Event = require('../models/Event');
+    
+    // Find the specific event
+    const event = await Event.findById(req.params.id)
+      .populate('invitedPlayers attendingPlayers guestPlayers.player');
+    
+    if (!event) {
+      return res.status(404).json({ message: 'Event nicht gefunden' });
+    }
+    
+    // Check if already processed
+    if (event.attendanceAutoProcessed) {
+      return res.status(400).json({ 
+        message: 'Anwesenheit wurde bereits verarbeitet',
+        processedAt: event.attendanceProcessedAt
+      });
+    }
+    
+    // Force process this event by temporarily modifying the criteria
+    const originalAutoProcessed = event.attendanceAutoProcessed;
+    const originalEndTime = event.endTime;
+    
+    // Temporarily mark as eligible for processing
+    event.endTime = new Date(Date.now() - (8 * 24 * 60 * 60 * 1000)); // 8 days ago
+    await event.save();
+    
+    // Run the processing
+    await checkAttendanceProcessing();
+    
+    // Reload the event to get updated status
+    const updatedEvent = await Event.findById(req.params.id);
+    
+    if (updatedEvent.attendanceAutoProcessed) {
+      // Restore original endTime
+      updatedEvent.endTime = originalEndTime;
+      await updatedEvent.save();
+      
+      res.json({
+        message: 'Anwesenheit wurde erfolgreich verarbeitet',
+        processedAt: updatedEvent.attendanceProcessedAt,
+        eventTitle: updatedEvent.title
+      });
+    } else {
+      // Restore original values if processing failed
+      event.endTime = originalEndTime;
+      event.attendanceAutoProcessed = originalAutoProcessed;
+      await event.save();
+      
+      res.status(500).json({ message: 'Fehler beim Verarbeiten der Anwesenheit' });
+    }
+    
+  } catch (error) {
+    console.error('Error processing attendance manually:', error);
+    res.status(500).json({ message: 'Fehler beim Verarbeiten der Anwesenheit' });
   }
 });
 

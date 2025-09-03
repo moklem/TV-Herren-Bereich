@@ -1,5 +1,23 @@
 import React, { useContext, useEffect, useState } from 'react';
+import axios from 'axios';
+import { de } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
+
+import {
+  ArrowBack,
+  Event,
+  LocationOn,
+  Group,
+  Description,
+  Person,
+  Repeat,
+  Public,
+  Notifications,
+  Add,
+  Delete,
+  Pool as PoolIcon,
+  Settings as SettingsIcon
+} from '@mui/icons-material';
 import {
   Box,
   Typography,
@@ -24,21 +42,12 @@ import {
   FormControlLabel,
   Switch
 } from '@mui/material';
-import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { de } from 'date-fns/locale';
-import {
-  ArrowBack,
-  Event,
-  LocationOn,
-  Group,
-  Description,
-  Person,
-  Repeat,
-  Public
-} from '@mui/icons-material';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { TimePicker } from '@mui/x-date-pickers/TimePicker';
+
 import { AuthContext } from '../../context/AuthContext';
 import { EventContext } from '../../context/EventContext';
 import { TeamContext } from '../../context/TeamContext';
@@ -70,7 +79,7 @@ const CreateEvent = () => {
   const [notes, setNotes] = useState('');
   const [teamId, setTeamId] = useState([]);
   const [userCoachTeams, setUserCoachTeams] = useState([]);
-  const [organizingTeamId, setOrganizingTeamId] = useState('');
+  const [organizingTeamIds, setOrganizingTeamIds] = useState([]);
   const [selectedPlayers, setSelectedPlayers] = useState([]);
   const [availablePlayers, setAvailablePlayers] = useState([]);
   const [formErrors, setFormErrors] = useState({});
@@ -84,6 +93,25 @@ const CreateEvent = () => {
   // Open access state
   const [isOpenAccess, setIsOpenAccess] = useState(false);
   const [selectedTeamIds, setSelectedTeamIds] = useState([]);
+  
+  // Voting deadline state
+  const [votingDeadline, setVotingDeadline] = useState(null);
+  
+  // Notification settings states
+  const [notificationEnabled, setNotificationEnabled] = useState(true);
+  const [reminderTimes, setReminderTimes] = useState([
+    { hours: 24, minutes: 0 },
+    { hours: 1, minutes: 0 }
+  ]);
+  const [customMessage, setCustomMessage] = useState('');
+  
+  // Training pool auto-invite settings
+  const [autoInviteEnabled, setAutoInviteEnabled] = useState(false);
+  const [autoInvitePoolId, setAutoInvitePoolId] = useState('');
+  const [autoInviteMinParticipants, setAutoInviteMinParticipants] = useState(6);
+  const [autoInviteTriggerType, setAutoInviteTriggerType] = useState('deadline');
+  const [autoInviteHoursBeforeEvent, setAutoInviteHoursBeforeEvent] = useState(24);
+  const [availablePools, setAvailablePools] = useState([]);
 
   // Load teams on component mount
   useEffect(() => {
@@ -93,6 +121,35 @@ const CreateEvent = () => {
     loadTeams();
   }, [fetchTeams]);
 
+  // Load available training pools when teams are selected
+  useEffect(() => {
+    if (selectedTeamIds.length > 0) {
+      fetchAvailablePools();
+    }
+  }, [selectedTeamIds]);
+
+  const fetchAvailablePools = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(
+        `${process.env.REACT_APP_API_URL}/training-pools`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      // Filter for pools related to selected teams
+      const teamPools = response.data.filter(pool => {
+        if (pool.type === 'team') {
+          return selectedTeamIds.includes(pool.team?._id || pool.team);
+        }
+        return pool.type === 'league'; // Include all league pools
+      });
+      
+      setAvailablePools(teamPools);
+    } catch (error) {
+      console.error('Error fetching training pools:', error);
+    }
+  };
+
   // Identify which teams the user coaches
   useEffect(() => {
     if (teams.length > 0 && user) {
@@ -101,12 +158,12 @@ const CreateEvent = () => {
       );
       setUserCoachTeams(coachTeams);
       
-      // Set default organizing team if not set
-      if (!organizingTeamId && coachTeams.length > 0) {
-        setOrganizingTeamId(coachTeams[0]._id);
+      // Set default organizing teams if not set
+      if (organizingTeamIds.length === 0 && coachTeams.length > 0) {
+        setOrganizingTeamIds([coachTeams[0]._id]);
       }
     }
-  }, [teams, user, organizingTeamId]);
+  }, [teams, user, organizingTeamIds]);
 
 // Update available players when teams change
   useEffect(() => {
@@ -138,22 +195,22 @@ const CreateEvent = () => {
     }
   }, [selectedTeamIds, teams, isOpenAccess]);
 
-  // Automatically set organizing team when only one team is selected
+  // Automatically set organizing teams based on selected teams
   useEffect(() => {
-    if (selectedTeamIds.length === 1) {
-      // When only one team is selected, make it the organizing team
-      const selectedTeamId = selectedTeamIds[0];
-      // Only update if the user is a coach of this team
-      const isCoachOfTeam = userCoachTeams.some(t => t._id === selectedTeamId);
-      if (isCoachOfTeam) {
-        setOrganizingTeamId(selectedTeamId);
+    if (selectedTeamIds.length > 0) {
+      // Filter selected teams to only include teams where user is a coach
+      const coachSelectedTeams = selectedTeamIds.filter(teamId => 
+        userCoachTeams.some(t => t._id === teamId)
+      );
+      
+      // Set all coach teams as organizing teams
+      if (coachSelectedTeams.length > 0) {
+        setOrganizingTeamIds(coachSelectedTeams);
       }
-    } else if (selectedTeamIds.length === 0) {
-      // Clear organizing team when no teams are selected
-      setOrganizingTeamId('');
+    } else {
+      // Clear organizing teams when no teams are selected
+      setOrganizingTeamIds([]);
     }
-    // When multiple teams are selected, keep the current organizing team if it's still in the selection
-    // Otherwise, let the user choose via the dropdown
   }, [selectedTeamIds, userCoachTeams]);
 
   // Clear selected players when open access is enabled
@@ -224,7 +281,8 @@ const CreateEvent = () => {
           description,
           notes,
           teams: selectedTeamIds,
-          organizingTeam: organizingTeamId,
+          organizingTeam: organizingTeamIds[0], // Keep for backward compatibility
+          organizingTeams: organizingTeamIds,
           invitedPlayers: isOpenAccess ? [] : selectedPlayers.filter(playerId => {
             // Only invite players that belong to this team
             const team = teams.find(t => t._id === teamId);
@@ -232,13 +290,29 @@ const CreateEvent = () => {
           }),
           isOpenAccess,
           isRecurring,
+          trainingPoolAutoInvite: autoInviteEnabled ? {
+            enabled: true,
+            poolId: autoInvitePoolId,
+            minParticipants: autoInviteMinParticipants,
+            triggerType: autoInviteTriggerType,
+            hoursBeforeEvent: autoInviteHoursBeforeEvent
+          } : { enabled: false },
           recurringPattern: isRecurring ? recurringPattern : undefined,
-          recurringEndDate: isRecurring ? recurringEndDate : undefined
+          recurringEndDate: isRecurring ? recurringEndDate : undefined,
+          votingDeadline: votingDeadline,
+          notificationSettings: {
+            enabled: notificationEnabled,
+            reminderTimes: reminderTimes,
+            customMessage: customMessage
+          }
         };
         
         const result = await createEvent(eventData);
         createdEvents.push(result);
       }
+      
+      // Wait a short moment to ensure state updates have propagated
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // Navigate to the first created event
       if (createdEvents.length > 0) {
@@ -265,6 +339,21 @@ const CreateEvent = () => {
     } else {
       setSelectedPlayers(availablePlayers.map(player => player._id));
     }
+  };
+
+  // Notification reminder functions
+  const addReminderTime = () => {
+    setReminderTimes([...reminderTimes, { hours: 1, minutes: 0 }]);
+  };
+
+  const removeReminderTime = (index) => {
+    setReminderTimes(reminderTimes.filter((_, i) => i !== index));
+  };
+
+  const updateReminderTime = (index, field, value) => {
+    const newReminderTimes = [...reminderTimes];
+    newReminderTimes[index][field] = parseInt(value) || 0;
+    setReminderTimes(newReminderTimes);
   };
 
   if (teamLoading) {
@@ -418,6 +507,30 @@ const CreateEvent = () => {
               </Tooltip>
             </Grid>
             
+            <Grid item xs={12} sm={6}>
+              <Tooltip title="Setzen Sie eine Frist bis wann Spieler abstimmen können (optional)" placement="top">
+                <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={de}>
+                  <DateTimePicker
+                    label="Abstimmungsfrist (optional)"
+                    value={votingDeadline}
+                    onChange={(newValue) => setVotingDeadline(newValue)}
+                    slotProps={{
+                      textField: {
+                        fullWidth: true,
+                        helperText: isRecurring ? "Frist für den ersten Termin - wird für alle weiteren Termine entsprechend angepasst" : "Nach dieser Zeit können Spieler nicht mehr abstimmen",
+                        sx: {
+                          cursor: 'pointer',
+                          '&:hover .MuiOutlinedInput-notchedOutline': {
+                            borderColor: 'primary.main'
+                          }
+                        }
+                      }
+                    }}
+                  />
+                </LocalizationProvider>
+              </Tooltip>
+            </Grid>
+            
             <Grid item xs={12}>
               <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
                 <LocationOn sx={{ mt: 2, mr: 1, color: 'primary.main' }} />
@@ -556,6 +669,194 @@ const CreateEvent = () => {
               <Divider sx={{ my: 2 }} />
             </Grid>
             
+            {/* Notification Settings Section */}
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Notifications sx={{ mr: 1, color: 'primary.main' }} />
+                <Typography variant="h6" component="h2">
+                  Benachrichtigungen
+                </Typography>
+              </Box>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={notificationEnabled}
+                    onChange={(e) => setNotificationEnabled(e.target.checked)}
+                    color="primary"
+                  />
+                }
+                label="Benachrichtigungen für diesen Termin aktivieren"
+              />
+            </Grid>
+            
+            {notificationEnabled && (
+              <>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle1" sx={{ mb: 2 }}>
+                    Erinnerungszeiten
+                  </Typography>
+                  
+                  {reminderTimes.map((reminder, index) => (
+                    <Box key={index} sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                      <TextField
+                        type="number"
+                        label="Stunden"
+                        value={reminder.hours}
+                        onChange={(e) => updateReminderTime(index, 'hours', e.target.value)}
+                        sx={{ width: '100px', mr: 1 }}
+                        inputProps={{ min: 0, max: 168 }}
+                      />
+                      <TextField
+                        type="number"
+                        label="Minuten"
+                        value={reminder.minutes}
+                        onChange={(e) => updateReminderTime(index, 'minutes', e.target.value)}
+                        sx={{ width: '100px', mr: 1 }}
+                        inputProps={{ min: 0, max: 59 }}
+                      />
+                      <Typography sx={{ mr: 1 }}>vor dem Termin</Typography>
+                      {reminderTimes.length > 1 && (
+                        <IconButton 
+                          onClick={() => removeReminderTime(index)}
+                          color="error"
+                          size="small"
+                        >
+                          <Delete />
+                        </IconButton>
+                      )}
+                    </Box>
+                  ))}
+                  
+                  <Button
+                    onClick={addReminderTime}
+                    startIcon={<Add />}
+                    variant="outlined"
+                    size="small"
+                    sx={{ mb: 2 }}
+                  >
+                    Weitere Erinnerung hinzufügen
+                  </Button>
+                </Grid>
+                
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Individuelle Nachricht (optional)"
+                    value={customMessage}
+                    onChange={(e) => setCustomMessage(e.target.value)}
+                    multiline
+                    rows={2}
+                    placeholder="Benutzerdefinierte Nachricht für die Benachrichtigung..."
+                    helperText="Wenn leer, wird eine automatische Nachricht generiert"
+                  />
+                </Grid>
+              </>
+            )}
+            
+            <Grid item xs={12}>
+              <Divider sx={{ my: 2 }} />
+            </Grid>
+            
+            {/* Training Pool Auto-Invite Section */}
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <PoolIcon sx={{ mr: 1, color: 'primary.main' }} />
+                <Typography variant="h6" component="h2">
+                  Training Pool Auto-Einladung
+                </Typography>
+              </Box>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={autoInviteEnabled}
+                    onChange={(e) => setAutoInviteEnabled(e.target.checked)}
+                    color="primary"
+                  />
+                }
+                label="Automatische Einladung aus Training Pool aktivieren"
+              />
+              <FormHelperText>
+                Lädt automatisch Spieler aus einem Training Pool ein, wenn die Teilnehmerzahl zu niedrig ist
+              </FormHelperText>
+            </Grid>
+            
+            {autoInviteEnabled && (
+              <>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Training Pool</InputLabel>
+                    <Select
+                      value={autoInvitePoolId}
+                      onChange={(e) => setAutoInvitePoolId(e.target.value)}
+                      label="Training Pool"
+                    >
+                      <MenuItem value="">
+                        <em>Kein Pool ausgewählt</em>
+                      </MenuItem>
+                      {availablePools.map(pool => (
+                        <MenuItem key={pool._id} value={pool._id}>
+                          {pool.name} ({pool.approvedPlayers?.length || 0} Spieler)
+                          {pool.type === 'league' && ` - Liga: ${pool.leagueLevel}`}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    <FormHelperText>Wählen Sie den Pool, aus dem Spieler eingeladen werden sollen</FormHelperText>
+                  </FormControl>
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    type="number"
+                    label="Mindest-Teilnehmerzahl"
+                    value={autoInviteMinParticipants}
+                    onChange={(e) => setAutoInviteMinParticipants(parseInt(e.target.value) || 6)}
+                    inputProps={{ min: 1 }}
+                    helperText="Wenn weniger Spieler zugesagt haben, werden automatisch weitere eingeladen"
+                  />
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Auslöser</InputLabel>
+                    <Select
+                      value={autoInviteTriggerType}
+                      onChange={(e) => setAutoInviteTriggerType(e.target.value)}
+                      label="Auslöser"
+                    >
+                      <MenuItem value="deadline">Nach Ablauf der Abstimmungsfrist</MenuItem>
+                      <MenuItem value="hours_before">Stunden vor dem Event</MenuItem>
+                    </Select>
+                    <FormHelperText>Wann soll die automatische Einladung erfolgen?</FormHelperText>
+                  </FormControl>
+                </Grid>
+                
+                {autoInviteTriggerType === 'hours_before' && (
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Stunden vor Event"
+                      value={autoInviteHoursBeforeEvent}
+                      onChange={(e) => setAutoInviteHoursBeforeEvent(parseInt(e.target.value) || 24)}
+                      inputProps={{ min: 1, max: 168 }}
+                      helperText="Wie viele Stunden vor dem Event soll eingeladen werden?"
+                    />
+                  </Grid>
+                )}
+              </>
+            )}
+            
+            <Grid item xs={12}>
+              <Divider sx={{ my: 2 }} />
+            </Grid>
+            
             <Grid item xs={12}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 <Group sx={{ mr: 1, color: 'primary.main' }} />
@@ -607,22 +908,35 @@ const CreateEvent = () => {
               </Tooltip>
             </Grid>
 
-            {selectedTeamIds.length > 1 && userCoachTeams.length > 1 && (
+            {selectedTeamIds.length > 1 && userCoachTeams.filter(team => selectedTeamIds.includes(team._id)).length > 1 && (
               <Grid item xs={12} sm={6}>
-                <Tooltip title="Wählen Sie das organisierende Team (muss ein Team sein, das Sie trainieren)" placement="top">
+                <Tooltip title="Wählen Sie die organisierenden Teams (müssen Teams sein, die Sie trainieren)" placement="top">
                   <FormControl fullWidth>
-                    <InputLabel id="organizing-team-label">Organisierendes Team *</InputLabel>
+                    <InputLabel id="organizing-teams-label">Organisierende Teams *</InputLabel>
                     <Select
-                      labelId="organizing-team-label"
-                      value={organizingTeamId}
-                      label="Organisierendes Team *"
-                      onChange={(e) => setOrganizingTeamId(e.target.value)}
+                      labelId="organizing-teams-label"
+                      multiple
+                      value={organizingTeamIds}
+                      onChange={(e) => setOrganizingTeamIds(e.target.value)}
+                      input={<OutlinedInput label="Organisierende Teams *" />}
+                      renderValue={(selected) => (
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                          {selected.map((teamId) => {
+                            const team = userCoachTeams.find(t => t._id === teamId);
+                            return team ? (
+                              <Chip key={teamId} label={team.name} size="small" />
+                            ) : null;
+                          })}
+                        </Box>
+                      )}
+                      MenuProps={MenuProps}
                     >
                       {userCoachTeams
                         .filter(team => selectedTeamIds.includes(team._id))
                         .map((team) => (
                           <MenuItem key={team._id} value={team._id}>
-                            {team.name}
+                            <Checkbox checked={organizingTeamIds.indexOf(team._id) > -1} />
+                            <ListItemText primary={team.name} />
                           </MenuItem>
                         ))}
                     </Select>

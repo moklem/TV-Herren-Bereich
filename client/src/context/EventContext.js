@@ -1,10 +1,12 @@
 import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
+
 import PropTypes from 'prop-types';
 
-import axios from 'axios';
 
 import { AuthContext } from './AuthContext';
 import { TeamContext } from './TeamContext';
+import axios from '../utils/axios';
+import eventEmitter, { EVENTS } from '../utils/eventEmitter';
 
 export const EventContext = createContext();
 
@@ -47,7 +49,10 @@ export const EventProvider = ({ children }) => {
       }
       
       const queryString = queryParams.toString();
-      const url = `${process.env.REACT_APP_API_URL}/events${queryString ? `?${queryString}` : ''}`;
+      // Add timestamp to prevent caching
+      const timestamp = Date.now();
+      const timestampParam = queryString ? `&_t=${timestamp}` : `?_t=${timestamp}`;
+      const url = `/events${queryString ? `?${queryString}` : ''}${timestampParam}`;
       
       const res = await axios.get(url);
       
@@ -93,6 +98,21 @@ const getEventTeamNames = (event) => {
       setError(null);
     }
   }, [user, currentTeam, fetchEvents, lastRefresh]);
+  
+  // Listen for event updates from other components
+  useEffect(() => {
+    const handleEventUpdate = (data) => {
+      // Don't immediately refresh all events - let the optimistic update show
+      // The delayed fetchEvent in accept/decline/unsure will sync the specific event
+      console.log('Event updated:', data);
+    };
+    
+    eventEmitter.on(EVENTS.EVENT_UPDATED, handleEventUpdate);
+    
+    return () => {
+      eventEmitter.off(EVENTS.EVENT_UPDATED, handleEventUpdate);
+    };
+  }, [user, currentTeam, fetchEvents]);
 
   // Fetch a specific event by ID
   const fetchEvent = useCallback(async (eventId) => {
@@ -100,7 +120,7 @@ const getEventTeamNames = (event) => {
       setLoading(true);
       setError(null);
       
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/events/${eventId}`);
+      const res = await axios.get(`/events/${eventId}?_t=${Date.now()}`);
       
       if (res.data) {
         // Update the event in the events array
@@ -112,10 +132,7 @@ const getEventTeamNames = (event) => {
         
         // If this is the current event, update it
         if (currentEvent && currentEvent._id === res.data._id) {
-          setCurrentEvent(prevCurrentEvent => ({
-            ...prevCurrentEvent,
-            ...res.data
-          }));
+          setCurrentEvent(res.data);
         }
       }
       
@@ -135,13 +152,18 @@ const getEventTeamNames = (event) => {
       setLoading(true);
       setError(null);
       
-      const res = await axios.post(`${process.env.REACT_APP_API_URL}/events`, eventData);
+      console.log('Creating event with data:', eventData);
+      console.log('trainingPoolAutoInvite:', eventData.trainingPoolAutoInvite);
+      
+      const res = await axios.post(`/events`, eventData);
       
       if (res.data) {
         // Handle response for both single and recurring events
         if (res.data.events && Array.isArray(res.data.events)) {
           // Multiple events created (recurring)
           setEvents(prevEvents => [...prevEvents, ...res.data.events]);
+          // Force refresh to ensure consistency
+          forceRefresh();
           return res.data; // Return the full response with mainEvent
         } else {
           // Single event created
@@ -166,12 +188,18 @@ const getEventTeamNames = (event) => {
       setLoading(true);
       setError(null);
       
-      const res = await axios.put(`${process.env.REACT_APP_API_URL}/events/${eventId}`, eventData);
+      const res = await axios.put(`/events/${eventId}`, eventData);
       
       if (res.data) {
         // Check if this was a recurring event update
         if (res.data.message === 'All recurring events updated') {
-          // Refresh all events to get the updated recurring events
+          // Force a complete refresh of all events
+          forceRefresh();
+          // Also fetch events to ensure we have the latest data
+          await fetchEvents({ teamId: currentTeam?._id });
+        } else if (res.data.message === 'Event converted to recurring series') {
+          // Force a complete refresh when converting to recurring
+          forceRefresh();
           await fetchEvents({ teamId: currentTeam?._id });
         } else {
           // Update the single event in the events array
@@ -207,7 +235,7 @@ const getEventTeamNames = (event) => {
       setLoading(true);
       setError(null);
       
-      const url = `${process.env.REACT_APP_API_URL}/events/${eventId}${deleteRecurring ? '?deleteRecurring=true' : ''}`;
+      const url = `/events/${eventId}${deleteRecurring ? '?deleteRecurring=true' : ''}`;
       await axios.delete(url);
       
       if (deleteRecurring) {
@@ -244,13 +272,54 @@ const getEventTeamNames = (event) => {
     try {
       setError(null);
       
-      await axios.post(`${process.env.REACT_APP_API_URL}/events/${eventId}/accept`);
+      // Optimistic update - immediately update local state
+      let updatedEvent = null;
+      setEvents(prevEvents =>
+        prevEvents.map(event => {
+          if (event._id === eventId && user) {
+            // Remove user from other lists and add to attending (if not already there)
+            const isAlreadyAttending = event.attendingPlayers.some(p => p._id === user._id);
+            
+            // Create a minimal user object with just the required fields
+            const minimalUser = { _id: user._id, name: user.name };
+            
+            // Update guest player status if user is a guest
+            const updatedGuestPlayers = event.guestPlayers ? event.guestPlayers.map(guest => {
+              if ((guest.player._id || guest.player) === user._id) {
+                return { ...guest, status: 'accepted' };
+              }
+              return guest;
+            }) : [];
+            
+            updatedEvent = {
+              ...event,
+              attendingPlayers: isAlreadyAttending ? event.attendingPlayers : [...event.attendingPlayers, minimalUser],
+              invitedPlayers: event.invitedPlayers.filter(p => p._id !== user._id),
+              declinedPlayers: event.declinedPlayers.filter(p => p._id !== user._id),
+              unsurePlayers: event.unsurePlayers ? event.unsurePlayers.filter(p => p._id !== user._id) : [],
+              guestPlayers: updatedGuestPlayers
+            };
+            return updatedEvent;
+          }
+          return event;
+        })
+      );
       
-      // Force a complete refresh by updating the lastRefresh timestamp
-      forceRefresh();
+      // Update currentEvent if it's the same event
+      if (currentEvent && currentEvent._id === eventId && updatedEvent) {
+        setCurrentEvent(updatedEvent);
+      }
+      
+      // Make the API call
+      await axios.post(`/events/${eventId}/accept`);
+      
+      // Emit event update notification
+      eventEmitter.emit(EVENTS.EVENT_UPDATED, { eventId, action: 'accept' });
 
       return true;
     } catch (err) {
+      // On error, revert the optimistic update by refreshing
+      forceRefresh();
       setError(err.response?.data?.message || 'Failed to accept invitation');
       console.error('Error accepting invitation:', err);
       throw err;
@@ -258,19 +327,119 @@ const getEventTeamNames = (event) => {
   };
 
   // Decline an event invitation (player only)
-  const declineInvitation = async (eventId) => {
+  const declineInvitation = async (eventId, reason) => {
     try {
       setError(null);
       
-      await axios.post(`${process.env.REACT_APP_API_URL}/events/${eventId}/decline`);
+      // Optimistic update - immediately update local state
+      let updatedEvent = null;
+      setEvents(prevEvents =>
+        prevEvents.map(event => {
+          if (event._id === eventId && user) {
+            // Remove user from other lists and add to declined (if not already there)
+            const isAlreadyDeclined = event.declinedPlayers.some(p => p._id === user._id);
+            
+            // Create a minimal user object with just the required fields
+            const minimalUser = { _id: user._id, name: user.name };
+            
+            // Update guest player status if user is a guest
+            const updatedGuestPlayers = event.guestPlayers ? event.guestPlayers.map(guest => {
+              if ((guest.player._id || guest.player) === user._id) {
+                return { ...guest, status: 'declined' };
+              }
+              return guest;
+            }) : [];
+            
+            updatedEvent = {
+              ...event,
+              declinedPlayers: isAlreadyDeclined ? event.declinedPlayers : [...event.declinedPlayers, minimalUser],
+              invitedPlayers: event.invitedPlayers.filter(p => p._id !== user._id),
+              attendingPlayers: event.attendingPlayers.filter(p => p._id !== user._id),
+              unsurePlayers: event.unsurePlayers ? event.unsurePlayers.filter(p => p._id !== user._id) : [],
+              guestPlayers: updatedGuestPlayers
+            };
+            return updatedEvent;
+          }
+          return event;
+        })
+      );
       
-      // Force a complete refresh by updating the lastRefresh timestamp
-      forceRefresh();
+      // Update currentEvent if it's the same event
+      if (currentEvent && currentEvent._id === eventId && updatedEvent) {
+        setCurrentEvent(updatedEvent);
+      }
+      
+      // Make the API call
+      await axios.post(`/events/${eventId}/decline`, { reason });
+      
+      // Emit event update notification
+      eventEmitter.emit(EVENTS.EVENT_UPDATED, { eventId, action: 'decline' });
 
       return true;
     } catch (err) {
+      // On error, revert the optimistic update by refreshing
+      forceRefresh();
       setError(err.response?.data?.message || 'Failed to decline invitation');
       console.error('Error declining invitation:', err);
+      throw err;
+    }
+  };
+
+  // Mark as unsure for an event (player only)
+  const markAsUnsure = async (eventId, reason) => {
+    try {
+      setError(null);
+      
+      // Optimistic update - immediately update local state
+      let updatedEvent = null;
+      setEvents(prevEvents =>
+        prevEvents.map(event => {
+          if (event._id === eventId && user) {
+            // Remove user from other lists and add to unsure (if not already there)
+            const isAlreadyUnsure = event.unsurePlayers && event.unsurePlayers.some(p => p._id === user._id);
+            
+            // Create a minimal user object with just the required fields
+            const minimalUser = { _id: user._id, name: user.name };
+            
+            // Update guest player status if user is a guest
+            const updatedGuestPlayers = event.guestPlayers ? event.guestPlayers.map(guest => {
+              if ((guest.player._id || guest.player) === user._id) {
+                return { ...guest, status: 'unsure' };
+              }
+              return guest;
+            }) : [];
+            
+            updatedEvent = {
+              ...event,
+              unsurePlayers: isAlreadyUnsure ? event.unsurePlayers : [...(event.unsurePlayers || []), minimalUser],
+              invitedPlayers: event.invitedPlayers.filter(p => p._id !== user._id),
+              attendingPlayers: event.attendingPlayers.filter(p => p._id !== user._id),
+              declinedPlayers: event.declinedPlayers.filter(p => p._id !== user._id),
+              guestPlayers: updatedGuestPlayers
+            };
+            return updatedEvent;
+          }
+          return event;
+        })
+      );
+      
+      // Update currentEvent if it's the same event
+      if (currentEvent && currentEvent._id === eventId && updatedEvent) {
+        setCurrentEvent(updatedEvent);
+      }
+      
+      // Make the API call
+      await axios.post(`/events/${eventId}/unsure`, { reason });
+      
+      // Emit event update notification
+      eventEmitter.emit(EVENTS.EVENT_UPDATED, { eventId, action: 'unsure' });
+
+      return true;
+    } catch (err) {
+      // On error, revert the optimistic update by refreshing
+      forceRefresh();
+      setError(err.response?.data?.message || 'Failed to mark as unsure');
+      console.error('Error marking as unsure:', err);
       throw err;
     }
   };
@@ -281,7 +450,7 @@ const getEventTeamNames = (event) => {
       setLoading(true);
       setError(null);
       
-      const res = await axios.post(`${process.env.REACT_APP_API_URL}/events/${eventId}/guests`, {
+      const res = await axios.post(`/events/${eventId}/guests`, {
         playerId,
         fromTeamId
       });
@@ -296,10 +465,7 @@ const getEventTeamNames = (event) => {
         
         // If this is the current event, update it
         if (currentEvent && currentEvent._id === res.data._id) {
-          setCurrentEvent(prevCurrentEvent => ({
-            ...prevCurrentEvent,
-            ...res.data
-          }));
+          setCurrentEvent(res.data);
         }
       }
       
@@ -319,7 +485,7 @@ const getEventTeamNames = (event) => {
       setLoading(true);
       setError(null);
       
-      await axios.delete(`${process.env.REACT_APP_API_URL}/events/${eventId}/guests/${playerId}`);
+      await axios.delete(`/events/${eventId}/guests/${playerId}`);
       
       // Refresh the event data
       await fetchEvent(eventId);
@@ -340,7 +506,7 @@ const uninvitePlayer = async (eventId, playerId) => {
     setLoading(true);
     setError(null);
     
-    const res = await axios.delete(`${process.env.REACT_APP_API_URL}/events/${eventId}/invitedPlayers/${playerId}`);
+    const res = await axios.delete(`/events/${eventId}/invitedPlayers/${playerId}`);
     
     if (res.data) {
       // Update the event in the events array
@@ -372,7 +538,7 @@ const invitePlayer = async (eventId, playerId) => {
     setLoading(true);
     setError(null);
     
-    const res = await axios.post(`${process.env.REACT_APP_API_URL}/events/${eventId}/invitedPlayers`, {
+    const res = await axios.post(`/events/${eventId}/invitedPlayers`, {
       playerId
     });
     
@@ -403,7 +569,7 @@ const invitePlayer = async (eventId, playerId) => {
       // Check if current user can edit an event
     const checkEventEditPermission = useCallback(async (eventId) => {
       try {
-        const res = await axios.get(`${process.env.REACT_APP_API_URL}/events/${eventId}/can-edit`);
+        const res = await axios.get(`/events/${eventId}/can-edit`);
         return res.data.canEdit;
       } catch (error) {
         console.error('Error checking edit permission:', error);
@@ -467,6 +633,7 @@ const invitePlayer = async (eventId, playerId) => {
         deleteEvent,
         acceptInvitation,
         declineInvitation,
+        markAsUnsure,
         addGuestPlayer,
         removeGuestPlayer,
         getUpcomingEvents,

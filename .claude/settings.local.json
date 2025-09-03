@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(npm install:*)",
+      "Bash(find:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "Bash(echo $HOME)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(cp:*)",
+      "WebFetch(domain:www.anthropic.com)",
+      "mcp__notionApi__API-post-search",
+      "mcp__notionApi__API-post-database-query",
+      "WebFetch(domain:inteam-test-backend-2.onrender.com)",
+      "Bash(node:*)",
+      "mcp__notionApi__API-retrieve-a-page",
+      "mcp__notionApi__API-patch-page",
+      "mcp__notionApi__API-retrieve-a-page",
+      "Bash(npm run lint:*)",
+      "Bash(claude settings)",
+      "Bash(claude config --help)",
+      "Bash(claude config list)",
+      "mcp__notionApi__API-get-block-children",
+      "Bash(move:*)",
+      "Bash(move agent-suggestions.md unimportant )",
+      "Bash(move start-app.sh unimportant )",
+      "Bash(move seed-database.sh unimportant )",
+      "Bash(move test-level-system.js unimportant)"
+    ],
+    "deny": [],
+    "defaultMode": "acceptEdits",
+    "additionalDirectories": [
+      "C:\\c\\Users\\morit\\.vscode\\BA"
+    ]
+  }
+}

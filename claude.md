@@ -1,5 +1,39 @@
 # Claude Code Instructions - Volleyball Team Manager PWA
 
+## Initial Setup Instructions
+
+### 🤖 IMMEDIATE ACTION REQUIRED
+When starting any session with this project:
+
+1. **FIRST**: Read this CLAUDE.md file completely
+2. **SECOND**: Automatically read the `project-status.json` file to understand current project state
+3. **THIRD**: MANDATORY - Always check if task matches an agent specialty. Use specialized agents for ANY task that fits their description. Only handle directly if NO agent matches.
+
+### Agent Selection Guide
+
+Choose the correct agent based on the task:
+
+- **general-purpose**: For codebase exploration, complex searches, or multi-step analysis tasks
+- **test-automator**: For implementing tests, test coverage, or automated testing (Note: Currently no tests exist)
+- **security-auditor**: For authentication, JWT issues, security reviews, or OWASP compliance
+- **render-deployment-specialist**: For deployment issues, build problems, or Render.com configuration
+- **react-query-optimizer**: For data fetching optimization, caching issues, or TanStack React Query problems
+- **react-performance-optimizer**: For React performance issues, slow rendering, or bundle optimization
+- **pwa-specialist**: For PWA features, service worker issues, or offline functionality
+- **mongodb-database-specialist**: For database schema changes, query optimization, or Mongoose issues
+- **material-ui-designer**: For UI component design, theming, or responsive layouts
+- **api-developer**: For Express.js backend development, API endpoints, or server-side functionality
+- **notion-backlog-manager**: For project management and task tracking (if Notion integration needed)
+- **notification-system-expert**: For push notifications, web-push implementation, or notification scheduling
+
+### Quick Agent Selection Examples:
+- "Fix slow loading dashboard" → **react-performance-optimizer**
+- "Add new API endpoint" → **api-developer** 
+- "Database query optimization" → **mongodb-database-specialist**
+- "PWA not working offline" → **pwa-specialist**
+- "UI component styling issue" → **material-ui-designer**
+- "Deploy to Render failing" → **render-deployment-specialist**
+
 ## Critical Guidelines
 
 ### 🚨 MOST IMPORTANT RULE
@@ -77,6 +111,37 @@ git push origin feature/test-feature-name
 4. **Test** mentally for side effects
 5. **Maintain** existing code style
 
+### Mobile Layout Requirements
+**CRITICAL**: All coach pages MUST include proper mobile navigation spacing to prevent header/bottom navigation overlap:
+
+#### **Container Styling Rules:**
+- **Main page containers** MUST include `pb: 10` (padding-bottom: 80px) for mobile navigation clearance
+- **Examples of correct styling:**
+  ```javascript
+  // For Box containers
+  <Box sx={{ mt: 2, pb: 10 }}>
+  
+  // For Container components  
+  <Container maxWidth="xl" sx={{ py: 3, pb: 10 }}>
+  
+  // For nested components with main content
+  <Box sx={{ p: 3, pb: 10 }}>
+  ```
+
+#### **When Creating New Coach Pages:**
+1. **ALWAYS** check existing coach pages for layout patterns
+2. **ENSURE** main container has `pb: 10` styling
+3. **TEST** on mobile to verify no navigation overlap
+4. **MATCH** the spacing patterns used in `/coach/players`, `/coach/teams`, etc.
+
+#### **Common Layout Issues to Avoid:**
+- ❌ Missing bottom padding causes mobile navigation overlap
+- ❌ Inconsistent container styling breaks mobile UX  
+- ❌ Header buttons that don't adapt to mobile screens
+- ✅ Always use `pb: 10` on main page containers
+- ✅ Test mobile responsiveness before completion
+- ✅ Follow established patterns from existing coach pages
+
 ### API Development
 - All routes start with `/api`
 - Follow RESTful conventions
@@ -98,6 +163,14 @@ CORS_ORIGIN=https://inteamfe.onrender.com
 ```
 REACT_APP_API_URL=https://inteam.onrender.com/api
 ```
+
+## Test Environment
+**Current Testing Configuration:**
+- **Test Backend**: https://inteam-test-backend-2.onrender.com
+- **Test Frontend**: https://inteam-test.onrender.com  
+- **Test API URL**: `REACT_APP_API_URL=https://inteam-test-backend-2.onrender.com/api`
+
+Use the test environment for development and testing before deploying to production.
 
 ## Common Tasks
 
@@ -141,9 +214,48 @@ When implementing changes:
 4. Confirm no unrelated code is affected
 5. Ask for permission before git operations
 
+## Project Status Tracking
+
+### After Every Feature/Code Change
+**MANDATORY**: Update the project-status.json file after implementing any feature or making code changes:
+
+1. **Read** the existing project-status.json file
+2. **Analyze** what has changed in the codebase since the last update
+3. **Update** the following sections:
+   - Increment version if appropriate (patch for fixes, minor for features)
+   - Update `lastAnalyzed` timestamp to current ISO 8601 format
+   - Move any completed in-progress items to completed features
+   - Add any new features found in the code to `implementedFeatures`
+   - Add a new entry to `recentChanges` with:
+     * Current timestamp
+     * List of modified/added/deleted files
+     * Summary of changes made
+     * Impact of changes on the application
+   - Update `codeStatistics` (file counts, lines of code)
+   - Update `completionPercentage` if significant progress made
+4. **Preserve** the change history (keep previous entries in recentChanges)
+5. **Scan** for new TODO/FIXME comments and add to `knownIssues` if found
+
+### Status Update Command Template
+```bash
+# Count files and lines after changes
+find client/src -name "*.js" -type f | wc -l
+find server -name "*.js" -type f | wc -l
+find client/src -name "*.js" -type f -exec wc -l {} + | tail -n 1
+find server -name "*.js" -type f -exec wc -l {} + | tail -n 1
+```
+
+### Version Increment Rules
+- **Patch (1.0.x)**: Bug fixes, small improvements, configuration changes
+- **Minor (1.x.0)**: New features, significant enhancements
+- **Major (x.0.0)**: Breaking changes, major architectural updates
+
 ## Remember
+- If you can't find exactly what I asked for, ask me for help rather than assuming
 - This is a production application with active users
 - Downtime affects real teams and players
 - Every change should be minimal and focused
 - Always preserve existing functionality
 - Ask before any git push operation
+- The UI language is German, so also use German time
+- **Always update project-status.json after making changes**

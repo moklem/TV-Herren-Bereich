@@ -1,5 +1,23 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useMemo } from 'react';
+
+import { format, isAfter, startOfDay, endOfWeek, startOfWeek, isWithinInterval } from 'date-fns';
+import { de } from 'date-fns/locale';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
+
+import {
+  Event,
+  Group,
+  Person,
+  SportsVolleyball,
+  Schedule,
+  LocationOn,
+  CalendarToday,
+  Check, 
+  HelpOutline, 
+  Close,
+  Feedback as FeedbackIcon,
+  ArrowForward
+} from '@mui/icons-material';
 import {
   Box,
   Typography,
@@ -19,70 +37,71 @@ import {
   CircularProgress,
   Alert
 } from '@mui/material';
-import {
-  Event,
-  Group,
-  Person,
-  SportsVolleyball,
-  Schedule,
-  LocationOn,
-  CalendarToday,
-  Check, 
-  HelpOutline, 
-  Close
-} from '@mui/icons-material';
-import { format, isAfter, startOfDay, endOfWeek, startOfWeek, isWithinInterval } from 'date-fns';
-import { de } from 'date-fns/locale';
+
 import { AuthContext } from '../../context/AuthContext';
-import { EventContext } from '../../context/EventContext';
-import { TeamContext } from '../../context/TeamContext';
-import axios from 'axios';
+import { useEvents } from '../../hooks/useEvents';
+import { useCoachTeams } from '../../hooks/useTeams';
 
 const Dashboard = () => {
   const { user } = useContext(AuthContext);
-  const { events, fetchEvents, loading: eventsLoading } = useContext(EventContext);
-  const { teams, fetchTeams, loading: teamsLoading, error: teamsError } = useContext(TeamContext);
   const navigate = useNavigate();
   
-  const [stats, setStats] = useState({
-    totalTeams: 0,
-    totalPlayers: 0,
-    totalYouthPlayers: 0,
-    upcomingEvents: 0
-  });
-  const [upcomingEvents, setUpcomingEvents] = useState([]);
-  const [userTeams, setUserTeams] = useState([]);
-  const [refreshing, setRefreshing] = useState(false);
+  // Use React Query hooks for data fetching
+  const { data: teams = [], isLoading: teamsLoading, error: teamsError } = useCoachTeams();
+  const { data: events = [], isLoading: eventsLoading } = useEvents();
 
-  // Ensure auth header is set
-  useEffect(() => {
-    const userStr = localStorage.getItem('user');
-    const userData = userStr ? JSON.parse(userStr) : null;
-    if (userData?.token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${userData.token}`;
-    }
-  }, []);
-
-  // Fetch data with error handling
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setRefreshing(true);
-        await Promise.all([
-          fetchTeams(),
-          fetchEvents()
-        ]);
-      } catch (error) {
-        console.error('Error loading dashboard data:', error);
-      } finally {
-        setRefreshing(false);
+  // Find events that need quick feedback (ended within last 7 days, not yet provided)
+  const eventsNeedingFeedback = useMemo(() => {
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const coachTeamIds = teams.map(team => team._id);
+    
+    return events.filter(event => {
+      // Only show events for teams the coach manages
+      const eventTeamId = event.team?._id || event.team;
+      if (!coachTeamIds.includes(eventTeamId)) {
+        return false;
       }
-    };
-
-    if (user) {
-      loadData();
-    }
-  }, [user, fetchTeams, fetchEvents]);
+      
+      const eventEndTime = new Date(event.date || event.startTime);
+      eventEndTime.setHours(eventEndTime.getHours() + 2); // Assume 2-hour duration
+      
+      // Check if event ended between 7 days ago and now
+      if (eventEndTime < sevenDaysAgo || eventEndTime > now) {
+        return false;
+      }
+      
+      // Check if feedback was already completed (using localStorage)
+      const feedbackKey = `feedback_shown_${event._id}`;
+      const feedbackData = localStorage.getItem(feedbackKey);
+      
+      if (feedbackData) {
+        try {
+          const parsed = JSON.parse(feedbackData);
+          // Only exclude if feedback was actually completed
+          if (parsed.completed === true) {
+            return false;
+          }
+          // If it was skipped, check if it was today (allow re-prompting next day)
+          if (parsed.skippedDate) {
+            const skippedDate = new Date(parsed.skippedDate).toDateString();
+            const today = new Date().toDateString();
+            // If skipped today, don't show again today
+            if (skippedDate === today) {
+              return false;
+            }
+          }
+        } catch (e) {
+          // Handle old format (backward compatibility)
+          if (feedbackData === 'true') {
+            return false;
+          }
+        }
+      }
+      
+      return true;
+    });
+  }, [events, teams]);
 
   // AttendanceStatusChip
 const getAttendanceStatusChip = (event) => {
@@ -92,10 +111,14 @@ const getAttendanceStatusChip = (event) => {
   // Count declined players
   const declined = event.declinedPlayers ? event.declinedPlayers.length : 0;
   
+  // Count unsure players
+  const unsure = event.unsurePlayers ? event.unsurePlayers.length : 0;
+  
   // Calculate pending team players (invited but not yet responded)
   const pendingTeamPlayers = event.invitedPlayers.filter(player => 
     !event.attendingPlayers.some(p => p._id === player._id) &&
-    !event.declinedPlayers.some(p => p._id === player._id)
+    !event.declinedPlayers.some(p => p._id === player._id) &&
+    !(event.unsurePlayers && event.unsurePlayers.some(p => p._id === player._id))
   ).length;
   
   // Calculate pending guest players
@@ -124,9 +147,27 @@ const getAttendanceStatusChip = (event) => {
         icon={<HelpOutline sx={{ fontSize: 16 }} />}
         label={totalPending}
         size="small"
-        color="warning"
         variant={totalPending > 0 ? "filled" : "outlined"}
         title={`${totalPending} Antworten ausstehend`}
+        sx={{ 
+          minWidth: 50,
+          backgroundColor: totalPending > 0 ? 'grey.500' : 'transparent',
+          color: totalPending > 0 ? 'white' : 'grey.500',
+          borderColor: 'grey.500',
+          '& .MuiChip-icon': {
+            color: totalPending > 0 ? 'white' : 'grey.500'
+          }
+        }}
+      />
+      
+      {/* Unsure chip */}
+      <Chip
+        icon={<HelpOutline sx={{ fontSize: 16 }} />}
+        label={unsure}
+        size="small"
+        color="warning"
+        variant={unsure > 0 ? "filled" : "outlined"}
+        title={`${unsure} Spieler sind unsicher`}
         sx={{ minWidth: 50 }}
       />
       
@@ -144,115 +185,69 @@ const getAttendanceStatusChip = (event) => {
   );
 };
 
-//Find Next Training and Match
-const getNextTraining = () => {
-  const now = new Date();
-  return events
-    .filter(event => 
-      event.type === 'Training' && 
-      new Date(event.startTime) > now
-    )
-    .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))[0];
-};
-
-const getNextMatch = () => {
-  const now = new Date();
-  return events
-    .filter(event => 
-      event.type === 'Spiel' && 
-      new Date(event.startTime) > now
-    )
-    .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))[0];
-};
-
-const nextTraining = getNextTraining();
-const nextMatch = getNextMatch();
-
-  // Calculate stats from teams
-  useEffect(() => {
-    if (teams && teams.length > 0) {
-      // Filter teams where user is a coach
-      const userTeams = teams.filter(team => 
-        team.coaches && team.coaches.some(c => c._id === user._id)
-      );
+// Memoized calculations for better performance
+  const { stats, upcomingEvents, nextTraining, nextMatch } = useMemo(() => {
+    const coachTeamIds = teams.map(team => team._id);
+    const now = new Date();
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+    
+    // Calculate stats
+    let totalPlayers = 0;
+    let totalYouthPlayers = 0;
+    const uniquePlayers = new Set();
+    const uniqueYouthPlayers = new Set();
+    
+    teams.forEach(team => {
+      if (team.players && Array.isArray(team.players)) {
+        team.players.forEach(player => {
+          uniquePlayers.add(player._id);
+          if (player.role === 'Jugendspieler') {
+            uniqueYouthPlayers.add(player._id);
+          }
+        });
+      }
+    });
+    
+    totalPlayers = uniquePlayers.size;
+    totalYouthPlayers = uniqueYouthPlayers.size;
+    
+    // Filter events for coach's teams
+    const coachEvents = events.filter(event => {
+      const eventTeamId = event.team._id || event.team;
+      return coachTeamIds.includes(eventTeamId);
+    });
+    
+    // Find next training and match
+    const nextTraining = coachEvents
+      .filter(event => event.type === 'Training' && new Date(event.startTime) > now)
+      .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))[0];
       
-      setUserTeams(userTeams);
-      
-      // Calculate stats
-      let totalPlayers = 0;
-      let totalYouthPlayers = 0;
-      const uniquePlayers = new Set();
-      const uniqueYouthPlayers = new Set();
-      
-      teams.forEach(team => {
-        if (team.players && Array.isArray(team.players)) {
-          team.players.forEach(player => {
-            uniquePlayers.add(player._id);
-            
-            if (player.role === 'Jugendspieler') {
-              uniqueYouthPlayers.add(player._id);
-            }
-          });
-        }
-      });
-      
-      totalPlayers = uniquePlayers.size;
-      totalYouthPlayers = uniqueYouthPlayers.size;
-      
-      setStats(prev => ({
-        ...prev,
+    const nextMatch = coachEvents
+      .filter(event => event.type === 'Spiel' && new Date(event.startTime) > now)
+      .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))[0];
+    
+    // Get upcoming events for this week
+    const upcoming = coachEvents.filter(event => {
+      const eventDate = new Date(event.startTime);
+      return isWithinInterval(eventDate, { start: weekStart, end: weekEnd });
+    }).sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+    
+    return {
+      stats: {
         totalTeams: teams.length,
         totalPlayers,
-        totalYouthPlayers
-      }));
-    } else {
-      // Reset stats if no teams
-      setStats({
-        totalTeams: 0,
-        totalPlayers: 0,
-        totalYouthPlayers: 0,
-        upcomingEvents: 0
-      });
-    }
-  }, [teams, user]);
-
-  // Calculate upcoming events - only this week and coach's teams
-  useEffect(() => {
-    if (events && events.length > 0 && userTeams.length > 0 && user) {
-      const now = new Date();
-      const weekStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday as start of week
-      const weekEnd = endOfWeek(now, { weekStartsOn: 1 }); // Sunday as end of week
-      
-      // Get IDs of teams where user is a coach
-      const coachTeamIds = userTeams.map(team => team._id);
-      
-      // Filter events: this week only AND from coach's teams only
-      const upcoming = events.filter(event => {
-        const eventDate = new Date(event.startTime);
-        const eventTeamId = event.team._id || event.team;
-        
-        return isWithinInterval(eventDate, { start: weekStart, end: weekEnd }) &&
-              coachTeamIds.includes(eventTeamId);
-      }).sort((a, b) => 
-        new Date(a.startTime) - new Date(b.startTime)
-      );
-      
-      setUpcomingEvents(upcoming.slice(0, 5)); // Show max 5 events
-      setStats(prev => ({
-        ...prev,
+        totalYouthPlayers,
         upcomingEvents: upcoming.length
-      }));
-    } else {
-      // Reset if no events or teams
-      setUpcomingEvents([]);
-      setStats(prev => ({
-        ...prev,
-        upcomingEvents: 0
-      }));
-    }
-  }, [events, userTeams, user]);
+      },
+      upcomingEvents: upcoming.slice(0, 5),
+      nextTraining,
+      nextMatch
+    };
+  }, [teams, events]);
 
-  if (eventsLoading || teamsLoading || refreshing) {
+
+  if (eventsLoading || teamsLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
         <CircularProgress />
@@ -281,6 +276,46 @@ const nextMatch = getNextMatch();
       <Typography variant="h4" component="h1" gutterBottom>
         Trainer Dashboard
       </Typography>
+
+      {/* Quick Feedback Reminder */}
+      {eventsNeedingFeedback.length > 0 && (
+        <Alert 
+          severity="info" 
+          icon={<FeedbackIcon />}
+          sx={{ mb: 3 }}
+        >
+          <Box>
+            <Typography variant="subtitle2" gutterBottom>
+              Quick Feedback ausstehend
+            </Typography>
+            <Typography variant="body2">
+              Sie haben {eventsNeedingFeedback.length} {eventsNeedingFeedback.length === 1 ? 'Event' : 'Events'} mit ausstehenden Spielerbewertungen:
+            </Typography>
+            <Box sx={{ mt: 1 }}>
+              {eventsNeedingFeedback.slice(0, 3).map(event => (
+                <Typography key={event._id} variant="caption" display="block" sx={{ ml: 2 }}>
+                  • {event.title} ({format(new Date(event.date || event.startTime), 'dd.MM.yyyy')})
+                </Typography>
+              ))}
+              {eventsNeedingFeedback.length > 3 && (
+                <Typography variant="caption" display="block" sx={{ ml: 2 }}>
+                  • und {eventsNeedingFeedback.length - 3} weitere...
+                </Typography>
+              )}
+            </Box>
+            <Button 
+              color="primary" 
+              size="small"
+              variant="contained"
+              endIcon={<ArrowForward />}
+              onClick={() => navigate(`/coach/events/${eventsNeedingFeedback[0]._id}`)}
+              sx={{ mt: 2 }}
+            >
+              Feedback geben
+            </Button>
+          </Box>
+        </Alert>
+      )}
 
       {/* next Match or Training */}
 {(nextTraining || nextMatch) && (
@@ -425,9 +460,9 @@ const nextMatch = getNextMatch();
             
             <Divider sx={{ mb: 2 }} />
             
-            {userTeams.length > 0 ? (
+            {teams.length > 0 ? (
               <List>
-                {userTeams.slice(0, 5).map(team => (
+                {teams.slice(0, 5).map(team => (
                   <ListItem 
                     key={team._id} 
                     button 

@@ -1,6 +1,6 @@
 import React, { useState, useContext } from 'react';
-import PropTypes from 'prop-types';
 
+import PropTypes from 'prop-types';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 
 import {
@@ -13,9 +13,9 @@ import {
   Event,
   Group,
   Assessment,
-  Refresh
+  Refresh,
+  GetApp
 } from '@mui/icons-material';
-
 import {
   AppBar,
   Box,
@@ -39,6 +39,7 @@ import {
 } from '@mui/material';
 
 import { AuthContext } from '../../context/AuthContext';
+import PWAInstall from '../common/PWAInstall';
 
 const Layout = ({ children }) => {
   const theme = useTheme();
@@ -142,6 +143,12 @@ const Layout = ({ children }) => {
             <Settings />
           </ListItemIcon>
           <ListItemText primary="Profil" />
+        </ListItem>
+        <ListItem>
+          <ListItemIcon>
+            <GetApp />
+          </ListItemIcon>
+          <PWAInstall variant="menu-item" />
         </ListItem>
         <ListItem button onClick={handleLogout}>
           <ListItemIcon>
@@ -300,6 +307,12 @@ const Layout = ({ children }) => {
                     <Settings fontSize="small" />
                   </ListItemIcon>
                   <Typography textAlign="center">Profil</Typography>
+                </MenuItem>
+                <MenuItem onClick={handleCloseUserMenu}>
+                  <ListItemIcon>
+                    <GetApp fontSize="small" />
+                  </ListItemIcon>
+                  <PWAInstall variant="menu-item" />
                 </MenuItem>
                 <MenuItem onClick={handleLogout}>
                   <ListItemIcon>
