@@ -178,50 +178,71 @@ const TrainingPoolManager = ({ teamId, teamName }) => {
       const token = localStorage.getItem('token');
       const ratingMap = {};
       
-      // Fetch ratings in parallel with better error handling
+      // Fetch overall ratings using the correct endpoint
       const ratingPromises = playerIds.map(async (playerId) => {
         try {
-          const response = await axios.get(
-            `${process.env.REACT_APP_API_URL}/attributes/player/${playerId}/universal`,
+          // First try to get overall rating
+          const overallResponse = await axios.post(
+            `${process.env.REACT_APP_API_URL}/attributes/calculate-overall`,
+            { 
+              playerId: playerId,
+              playerPosition: null // Let it use the player's stored position
+            },
             { 
               headers: { Authorization: `Bearer ${token}` },
               validateStatus: function (status) {
-                // Don't throw for 404s - these are expected for players without ratings
+                return status < 500; // Don't throw for 404s
+              }
+            }
+          );
+          
+          if (overallResponse.status === 200 && overallResponse.data.overallRating) {
+            console.log(`Player ${playerId} has overall rating: ${overallResponse.data.overallRating}`);
+            return { 
+              playerId, 
+              rating: Math.round(overallResponse.data.overallRating),
+              hasActualRating: true
+            };
+          }
+          
+          // If no overall rating, try to get individual attributes
+          const attributesResponse = await axios.get(
+            `${process.env.REACT_APP_API_URL}/attributes/universal/${playerId}`,
+            { 
+              headers: { Authorization: `Bearer ${token}` },
+              validateStatus: function (status) {
                 return status < 500;
               }
             }
           );
           
-          if (response.status === 404) {
-            // Player has no rating yet
-            console.log(`Player ${playerId} has no rating (404)`);
+          if (attributesResponse.status === 404 || !attributesResponse.data || attributesResponse.data.length === 0) {
+            console.log(`Player ${playerId} has no ratings (404 or empty)`);
             return { playerId, rating: 50, hasActualRating: false };
           }
           
-          // Debug: Log the actual response structure
-          console.log(`Rating API response for player ${playerId}:`, response.data);
-          
-          // Try multiple possible rating field names
-          let rating = response.data?.overallRating || 
-                      response.data?.numericValue || 
-                      response.data?.rating || 
-                      response.data?.value ||
-                      response.data?.averageRating;
-          
-          if (rating === undefined || rating === null || rating === 0) {
-            console.warn(`Player ${playerId} API returned data but no valid rating:`, response.data);
-            return { playerId, rating: 50, hasActualRating: false };
+          // Calculate simple average from individual attributes
+          const attributes = attributesResponse.data;
+          const validRatings = attributes
+            .filter(attr => attr.numericValue && attr.numericValue > 0)
+            .map(attr => attr.numericValue);
+            
+          if (validRatings.length > 0) {
+            const averageRating = Math.round(validRatings.reduce((sum, val) => sum + val, 0) / validRatings.length);
+            console.log(`Player ${playerId} has average rating from ${validRatings.length} attributes: ${averageRating}`);
+            return { 
+              playerId, 
+              rating: averageRating,
+              hasActualRating: true
+            };
           }
           
-          console.log(`Player ${playerId} has actual rating: ${rating}`);
-          return { 
-            playerId, 
-            rating: Number(rating),
-            hasActualRating: true
-          };
+          // Player has attributes but no valid numeric values
+          console.log(`Player ${playerId} has attributes but no valid ratings`);
+          return { playerId, rating: 50, hasActualRating: false };
+          
         } catch (err) {
-          // For any other error, default to 50
-          console.warn(`Could not fetch rating for player ${playerId}, using default`);
+          console.warn(`Could not fetch rating for player ${playerId}:`, err.message);
           return { playerId, rating: 50, hasActualRating: false };
         }
       });
