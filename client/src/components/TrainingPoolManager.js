@@ -193,9 +193,9 @@ const TrainingPoolManager = ({ teamId, teamName }) => {
           );
           
           if (response.status === 404) {
-            // Player has no rating yet, default to 50 (middle of range)
+            // Player has no rating yet
             console.log(`Player ${playerId} has no rating (404)`);
-            return { playerId, rating: 50 };
+            return { playerId, rating: 50, hasActualRating: false };
           }
           
           // Debug: Log the actual response structure
@@ -208,25 +208,27 @@ const TrainingPoolManager = ({ teamId, teamName }) => {
                       response.data?.value ||
                       response.data?.averageRating;
           
-          if (rating === undefined || rating === null) {
-            console.warn(`Player ${playerId} API returned data but no recognizable rating field:`, response.data);
-            rating = 50;
+          if (rating === undefined || rating === null || rating === 0) {
+            console.warn(`Player ${playerId} API returned data but no valid rating:`, response.data);
+            return { playerId, rating: 50, hasActualRating: false };
           }
           
+          console.log(`Player ${playerId} has actual rating: ${rating}`);
           return { 
             playerId, 
-            rating: Number(rating) || 50 
+            rating: Number(rating),
+            hasActualRating: true
           };
         } catch (err) {
           // For any other error, default to 50
           console.warn(`Could not fetch rating for player ${playerId}, using default`);
-          return { playerId, rating: 50 };
+          return { playerId, rating: 50, hasActualRating: false };
         }
       });
       
       const results = await Promise.all(ratingPromises);
-      results.forEach(({ playerId, rating }) => {
-        ratingMap[playerId] = rating;
+      results.forEach(({ playerId, rating, hasActualRating }) => {
+        ratingMap[playerId] = { rating, hasActualRating };
       });
       
       return ratingMap;
@@ -235,7 +237,7 @@ const TrainingPoolManager = ({ teamId, teamName }) => {
       // Return default ratings for all players
       const defaultMap = {};
       playerIds.forEach(id => {
-        defaultMap[id] = 50;
+        defaultMap[id] = { rating: 50, hasActualRating: false };
       });
       return defaultMap;
     }
@@ -354,45 +356,62 @@ const TrainingPoolManager = ({ teamId, teamName }) => {
       player => !poolPlayerIds.includes(player._id)
     );
     
-    // Add default ratings immediately to prevent display issues
-    const playersWithDefaults = eligible.map(player => ({
-      ...player,
-      overallRating: 50 // Default rating while we fetch actual ones
-    }));
-    
-    // Set initial players immediately so dialog shows something
-    setAvailablePlayers(playersWithDefaults);
-    setFilteredPlayers(playersWithDefaults);
-    
-    // Fetch ratings in background without blocking dialog opening
-    fetchPlayerRatings(eligible.map(p => p._id)).then(ratings => {
-      // Add ratings to players, keeping defaults for failed fetches
-      let playersWithRatings = eligible.map(player => ({
+    // For league pools, don't show any players initially - wait for ratings
+    if (pool.type === 'league') {
+      setAvailablePlayers([]);
+      setFilteredPlayers([]);
+      setLoadingPlayers(true);
+    } else {
+      // For team pools, show players immediately with default ratings
+      const playersWithDefaults = eligible.map(player => ({
         ...player,
-        overallRating: ratings[player._id] || 50 // Default to 50 instead of 0
+        overallRating: 50,
+        hasActualRating: false // Track if this is a real rating
       }));
+      setAvailablePlayers(playersWithDefaults);
+      setFilteredPlayers(playersWithDefaults);
+    }
+    
+    // Fetch ratings for all players
+    fetchPlayerRatings(eligible.map(p => p._id)).then(ratings => {
+      // Add ratings to players, tracking which have actual ratings
+      let playersWithRatings = eligible.map(player => {
+        const ratingData = ratings[player._id];
+        return {
+          ...player,
+          overallRating: ratingData?.rating || 50,
+          hasActualRating: ratingData?.hasActualRating || false
+        };
+      });
       
-      // For league pools, filter by rating requirements
-      // But be lenient - if a player has no rating (defaulted to 50), 
-      // still show them unless it's clearly outside the range
+      // For league pools, only show players with actual ratings
       if (pool.type === 'league' && pool.minRating && pool.maxRating) {
         playersWithRatings = playersWithRatings.filter(player => {
-          const rating = player.overallRating || 50;
-          // If player has default rating (50), only exclude if pool is very high or very low
-          if (rating === 50) {
-            // Show player unless pool is clearly for very high or very low rated players
-            return !(pool.minRating > 70 || pool.maxRating < 30);
+          // Only show players with actual ratings
+          if (!player.hasActualRating) {
+            return false;
           }
-          // For players with actual ratings, use strict filtering
-          return rating >= pool.minRating && rating <= pool.maxRating;
+          // Filter by rating requirements
+          return player.overallRating >= pool.minRating && player.overallRating <= pool.maxRating;
         });
       }
       
       setAvailablePlayers(playersWithRatings);
       setFilteredPlayers(playersWithRatings);
+      setLoadingPlayers(false);
     }).catch(error => {
-      console.warn('Error fetching player ratings, using defaults:', error);
-      // Keep the default ratings if there's an error
+      console.warn('Error fetching player ratings:', error);
+      setLoadingPlayers(false);
+      // For team pools, keep defaults. For league pools, show empty
+      if (pool.type !== 'league') {
+        const playersWithDefaults = eligible.map(player => ({
+          ...player,
+          overallRating: 50,
+          hasActualRating: false
+        }));
+        setAvailablePlayers(playersWithDefaults);
+        setFilteredPlayers(playersWithDefaults);
+      }
     });
   };
 
@@ -1079,10 +1098,13 @@ const TrainingPoolManager = ({ teamId, teamName }) => {
                               {player.position || 'Keine Position'}
                             </Typography>
                             <Chip 
-                              label={player.overallRating === 50 ? 'Rating: 50 (Standard)' : `Rating: ${player.overallRating}`}
+                              label={player.hasActualRating ? `Rating: ${player.overallRating}` : 'Rating: 50 (Standard)'}
                               size="small"
-                              color={player.overallRating >= 80 ? 'success' : player.overallRating >= 60 ? 'primary' : 'default'}
-                              variant={player.overallRating === 50 ? 'outlined' : 'filled'}
+                              color={player.hasActualRating ? 
+                                (player.overallRating >= 80 ? 'success' : player.overallRating >= 60 ? 'primary' : 'default') : 
+                                'default'
+                              }
+                              variant={player.hasActualRating ? 'filled' : 'outlined'}
                             />
                           </Box>
                           {!isTeamPlayer && player.teams?.length > 0 && (
