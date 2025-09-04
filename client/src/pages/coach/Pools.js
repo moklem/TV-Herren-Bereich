@@ -220,12 +220,14 @@ const Pools = () => {
                         </Typography>
                         <Box display="flex" flexWrap="wrap" gap={0.5}>
                           {pool.approvedPlayers.slice(0, 5).map(player => (
-                            <Chip
-                              key={player.player._id}
-                              label={player.player.name}
-                              size="small"
-                              avatar={<Avatar>{player.player.name?.charAt(0)}</Avatar>}
-                            />
+                            player.player && (
+                              <Chip
+                                key={player.player._id}
+                                label={player.player.name}
+                                size="small"
+                                avatar={<Avatar>{player.player.name?.charAt(0)}</Avatar>}
+                              />
+                            )
                           ))}
                           {pool.approvedPlayers.length > 5 && (
                             <Chip
@@ -322,12 +324,14 @@ const Pools = () => {
                         </Typography>
                         <Box display="flex" flexWrap="wrap" gap={0.5}>
                           {pool.approvedPlayers.slice(0, 5).map(player => (
-                            <Chip
-                              key={player.player._id}
-                              label={player.player.name}
-                              size="small"
-                              avatar={<Avatar>{player.player.name?.charAt(0)}</Avatar>}
-                            />
+                            player.player && (
+                              <Chip
+                                key={player.player._id}
+                                label={player.player.name}
+                                size="small"
+                                avatar={<Avatar>{player.player.name?.charAt(0)}</Avatar>}
+                              />
+                            )
                           ))}
                           {pool.approvedPlayers.length > 5 && (
                             <Chip
