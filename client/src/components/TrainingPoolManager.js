@@ -193,24 +193,42 @@ const TrainingPoolManager = ({ teamId, teamName }) => {
           );
           
           if (response.status === 404) {
-            // Player has no rating yet, default to 50 (middle of range)
-            return { playerId, rating: 50 };
+            // Player has no rating yet
+            console.log(`Player ${playerId} has no rating (404)`);
+            return { playerId, rating: 50, hasActualRating: false };
           }
           
+          // Debug: Log the actual response structure
+          console.log(`Rating API response for player ${playerId}:`, response.data);
+          
+          // Try multiple possible rating field names
+          let rating = response.data?.overallRating || 
+                      response.data?.numericValue || 
+                      response.data?.rating || 
+                      response.data?.value ||
+                      response.data?.averageRating;
+          
+          if (rating === undefined || rating === null || rating === 0) {
+            console.warn(`Player ${playerId} API returned data but no valid rating:`, response.data);
+            return { playerId, rating: 50, hasActualRating: false };
+          }
+          
+          console.log(`Player ${playerId} has actual rating: ${rating}`);
           return { 
             playerId, 
-            rating: response.data?.overallRating || response.data?.numericValue || 50 
+            rating: Number(rating),
+            hasActualRating: true
           };
         } catch (err) {
           // For any other error, default to 50
           console.warn(`Could not fetch rating for player ${playerId}, using default`);
-          return { playerId, rating: 50 };
+          return { playerId, rating: 50, hasActualRating: false };
         }
       });
       
       const results = await Promise.all(ratingPromises);
-      results.forEach(({ playerId, rating }) => {
-        ratingMap[playerId] = rating;
+      results.forEach(({ playerId, rating, hasActualRating }) => {
+        ratingMap[playerId] = { rating, hasActualRating };
       });
       
       return ratingMap;
@@ -219,7 +237,7 @@ const TrainingPoolManager = ({ teamId, teamName }) => {
       // Return default ratings for all players
       const defaultMap = {};
       playerIds.forEach(id => {
-        defaultMap[id] = 50;
+        defaultMap[id] = { rating: 50, hasActualRating: false };
       });
       return defaultMap;
     }
@@ -330,44 +348,70 @@ const TrainingPoolManager = ({ teamId, teamName }) => {
     
     // Filter out players already in the pool
     const poolPlayerIds = [
-      ...(pool.approvedPlayers || []).map(p => p.player._id),
-      ...(pool.pendingApproval || []).map(p => p.player._id)
+      ...(pool.approvedPlayers || []).map(p => p.player?._id).filter(Boolean),
+      ...(pool.pendingApproval || []).map(p => p.player?._id).filter(Boolean)
     ];
     
     const eligible = availablePlayers.filter(
       player => !poolPlayerIds.includes(player._id)
     );
     
-    // Set initial players immediately so dialog shows something
-    setAvailablePlayers(eligible);
-    setFilteredPlayers(eligible);
-    
-    // Fetch ratings in background without blocking dialog opening
-    fetchPlayerRatings(eligible.map(p => p._id)).then(ratings => {
-      // Add ratings to players
-      let playersWithRatings = eligible.map(player => ({
+    // For league pools, don't show any players initially - wait for ratings
+    if (pool.type === 'league') {
+      setAvailablePlayers([]);
+      setFilteredPlayers([]);
+      setLoadingPlayers(true);
+    } else {
+      // For team pools, show players immediately with default ratings
+      const playersWithDefaults = eligible.map(player => ({
         ...player,
-        overallRating: ratings[player._id] || 50 // Default to 50 instead of 0
+        overallRating: 50,
+        hasActualRating: false // Track if this is a real rating
       }));
+      setAvailablePlayers(playersWithDefaults);
+      setFilteredPlayers(playersWithDefaults);
+    }
+    
+    // Fetch ratings for all players
+    fetchPlayerRatings(eligible.map(p => p._id)).then(ratings => {
+      // Add ratings to players, tracking which have actual ratings
+      let playersWithRatings = eligible.map(player => {
+        const ratingData = ratings[player._id];
+        return {
+          ...player,
+          overallRating: ratingData?.rating || 50,
+          hasActualRating: ratingData?.hasActualRating || false
+        };
+      });
       
-      // For league pools, filter by rating requirements
-      // But be lenient - if a player has no rating (defaulted to 50), 
-      // still show them unless it's clearly outside the range
+      // For league pools, only show players with actual ratings
       if (pool.type === 'league' && pool.minRating && pool.maxRating) {
         playersWithRatings = playersWithRatings.filter(player => {
-          const rating = player.overallRating || 50;
-          // If player has default rating (50), only exclude if pool is very high or very low
-          if (rating === 50) {
-            // Show player unless pool is clearly for very high or very low rated players
-            return !(pool.minRating > 70 || pool.maxRating < 30);
+          // Only show players with actual ratings
+          if (!player.hasActualRating) {
+            return false;
           }
-          // For players with actual ratings, use strict filtering
-          return rating >= pool.minRating && rating <= pool.maxRating;
+          // Filter by rating requirements
+          return player.overallRating >= pool.minRating && player.overallRating <= pool.maxRating;
         });
       }
       
       setAvailablePlayers(playersWithRatings);
       setFilteredPlayers(playersWithRatings);
+      setLoadingPlayers(false);
+    }).catch(error => {
+      console.warn('Error fetching player ratings:', error);
+      setLoadingPlayers(false);
+      // For team pools, keep defaults. For league pools, show empty
+      if (pool.type !== 'league') {
+        const playersWithDefaults = eligible.map(player => ({
+          ...player,
+          overallRating: 50,
+          hasActualRating: false
+        }));
+        setAvailablePlayers(playersWithDefaults);
+        setFilteredPlayers(playersWithDefaults);
+      }
     });
   };
 
@@ -604,31 +648,33 @@ const TrainingPoolManager = ({ teamId, teamName }) => {
                         </Typography>
                         <List dense>
                           {pool.pendingApproval.map(request => (
-                            <ListItem key={request.player._id}>
-                              <ListItemAvatar>
-                                <Avatar>{request.player.name?.charAt(0)}</Avatar>
-                              </ListItemAvatar>
-                              <ListItemText
-                                primary={request.player.name}
-                                secondary={`Rating: ${request.currentRating} | Anwesenheit: ${request.attendancePercentage}%`}
-                              />
-                              <ListItemSecondaryAction>
-                                <IconButton
-                                  edge="end"
-                                  color="success"
-                                  onClick={() => handleApprovePlayer(pool._id, request.player._id)}
-                                >
-                                  <CheckIcon />
-                                </IconButton>
-                                <IconButton
-                                  edge="end"
-                                  color="error"
-                                  onClick={() => handleRejectPlayer(pool._id, request.player._id)}
-                                >
-                                  <CloseIcon />
-                                </IconButton>
-                              </ListItemSecondaryAction>
-                            </ListItem>
+                            request.player && (
+                              <ListItem key={request.player._id}>
+                                <ListItemAvatar>
+                                  <Avatar>{request.player.name?.charAt(0)}</Avatar>
+                                </ListItemAvatar>
+                                <ListItemText
+                                  primary={request.player.name}
+                                  secondary={`Rating: ${request.currentRating} | Anwesenheit: ${request.attendancePercentage}%`}
+                                />
+                                <ListItemSecondaryAction>
+                                  <IconButton
+                                    edge="end"
+                                    color="success"
+                                    onClick={() => handleApprovePlayer(pool._id, request.player._id)}
+                                  >
+                                    <CheckIcon />
+                                  </IconButton>
+                                  <IconButton
+                                    edge="end"
+                                    color="error"
+                                    onClick={() => handleRejectPlayer(pool._id, request.player._id)}
+                                  >
+                                    <CloseIcon />
+                                  </IconButton>
+                                </ListItemSecondaryAction>
+                              </ListItem>
+                            )
                           ))}
                         </List>
                         <Divider sx={{ my: 2 }} />
@@ -642,24 +688,26 @@ const TrainingPoolManager = ({ teamId, teamName }) => {
                     {pool.approvedPlayers?.length > 0 ? (
                       <List dense>
                         {pool.approvedPlayers.map(player => (
-                          <ListItem key={player.player._id}>
-                            <ListItemAvatar>
-                              <Avatar>{player.player.name?.charAt(0)}</Avatar>
-                            </ListItemAvatar>
-                            <ListItemText
-                              primary={player.player.name}
-                              secondary={`Rating: ${player.currentRating} | Anwesenheit: ${player.attendancePercentage}%`}
-                            />
-                            <ListItemSecondaryAction>
-                              <IconButton
-                                edge="end"
-                                color="error"
-                                onClick={() => handleRemovePlayer(pool._id, player.player._id)}
-                              >
-                                <DeleteIcon />
-                              </IconButton>
-                            </ListItemSecondaryAction>
-                          </ListItem>
+                          player.player && (
+                            <ListItem key={player.player._id}>
+                              <ListItemAvatar>
+                                <Avatar>{player.player.name?.charAt(0)}</Avatar>
+                              </ListItemAvatar>
+                              <ListItemText
+                                primary={player.player.name}
+                                secondary={`Rating: ${player.currentRating} | Anwesenheit: ${player.attendancePercentage}%`}
+                              />
+                              <ListItemSecondaryAction>
+                                <IconButton
+                                  edge="end"
+                                  color="error"
+                                  onClick={() => handleRemovePlayer(pool._id, player.player._id)}
+                                >
+                                  <DeleteIcon />
+                                </IconButton>
+                              </ListItemSecondaryAction>
+                            </ListItem>
+                          )
                         ))}
                       </List>
                     ) : (
@@ -769,31 +817,33 @@ const TrainingPoolManager = ({ teamId, teamName }) => {
                         </Typography>
                         <List dense>
                           {pool.pendingApproval.map(request => (
-                            <ListItem key={request.player._id}>
-                              <ListItemAvatar>
-                                <Avatar>{request.player.name?.charAt(0)}</Avatar>
-                              </ListItemAvatar>
-                              <ListItemText
-                                primary={request.player.name}
-                                secondary={`Rating: ${request.currentRating} | Anwesenheit: ${request.attendancePercentage}%`}
-                              />
-                              <ListItemSecondaryAction>
-                                <IconButton
-                                  edge="end"
-                                  color="success"
-                                  onClick={() => handleApprovePlayer(pool._id, request.player._id)}
-                                >
-                                  <CheckIcon />
-                                </IconButton>
-                                <IconButton
-                                  edge="end"
-                                  color="error"
-                                  onClick={() => handleRejectPlayer(pool._id, request.player._id)}
-                                >
-                                  <CloseIcon />
-                                </IconButton>
-                              </ListItemSecondaryAction>
-                            </ListItem>
+                            request.player && (
+                              <ListItem key={request.player._id}>
+                                <ListItemAvatar>
+                                  <Avatar>{request.player.name?.charAt(0)}</Avatar>
+                                </ListItemAvatar>
+                                <ListItemText
+                                  primary={request.player.name}
+                                  secondary={`Rating: ${request.currentRating} | Anwesenheit: ${request.attendancePercentage}%`}
+                                />
+                                <ListItemSecondaryAction>
+                                  <IconButton
+                                    edge="end"
+                                    color="success"
+                                    onClick={() => handleApprovePlayer(pool._id, request.player._id)}
+                                  >
+                                    <CheckIcon />
+                                  </IconButton>
+                                  <IconButton
+                                    edge="end"
+                                    color="error"
+                                    onClick={() => handleRejectPlayer(pool._id, request.player._id)}
+                                  >
+                                    <CloseIcon />
+                                  </IconButton>
+                                </ListItemSecondaryAction>
+                              </ListItem>
+                            )
                           ))}
                         </List>
                         <Divider sx={{ my: 2 }} />
@@ -807,24 +857,26 @@ const TrainingPoolManager = ({ teamId, teamName }) => {
                     {pool.approvedPlayers?.length > 0 ? (
                       <List dense>
                         {pool.approvedPlayers.map(player => (
-                          <ListItem key={player.player._id}>
-                            <ListItemAvatar>
-                              <Avatar>{player.player.name?.charAt(0)}</Avatar>
-                            </ListItemAvatar>
-                            <ListItemText
-                              primary={player.player.name}
-                              secondary={`Rating: ${player.currentRating} | Anwesenheit: ${player.attendancePercentage}%`}
-                            />
-                            <ListItemSecondaryAction>
-                              <IconButton
-                                edge="end"
-                                color="error"
-                                onClick={() => handleRemovePlayer(pool._id, player.player._id)}
-                              >
-                                <DeleteIcon />
-                              </IconButton>
-                            </ListItemSecondaryAction>
-                          </ListItem>
+                          player.player && (
+                            <ListItem key={player.player._id}>
+                              <ListItemAvatar>
+                                <Avatar>{player.player.name?.charAt(0)}</Avatar>
+                              </ListItemAvatar>
+                              <ListItemText
+                                primary={player.player.name}
+                                secondary={`Rating: ${player.currentRating} | Anwesenheit: ${player.attendancePercentage}%`}
+                              />
+                              <ListItemSecondaryAction>
+                                <IconButton
+                                  edge="end"
+                                  color="error"
+                                  onClick={() => handleRemovePlayer(pool._id, player.player._id)}
+                                >
+                                  <DeleteIcon />
+                                </IconButton>
+                              </ListItemSecondaryAction>
+                            </ListItem>
+                          )
                         ))}
                       </List>
                     ) : (
@@ -1045,14 +1097,15 @@ const TrainingPoolManager = ({ teamId, teamName }) => {
                             <Typography variant="body2" component="span">
                               {player.position || 'Keine Position'}
                             </Typography>
-                            {player.overallRating > 0 && (
-                              <Chip 
-                                label={`Rating: ${player.overallRating}`}
-                                size="small"
-                                color={player.overallRating >= 80 ? 'success' : player.overallRating >= 60 ? 'primary' : 'default'}
-                                variant="filled"
-                              />
-                            )}
+                            <Chip 
+                              label={player.hasActualRating ? `Rating: ${player.overallRating}` : 'Rating: 50 (Standard)'}
+                              size="small"
+                              color={player.hasActualRating ? 
+                                (player.overallRating >= 80 ? 'success' : player.overallRating >= 60 ? 'primary' : 'default') : 
+                                'default'
+                              }
+                              variant={player.hasActualRating ? 'filled' : 'outlined'}
+                            />
                           </Box>
                           {!isTeamPlayer && player.teams?.length > 0 && (
                             <Typography variant="caption" display="block" color="text.secondary">
