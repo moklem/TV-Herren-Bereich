@@ -458,19 +458,27 @@ const AppContent = () => {
           </CoachLayout>
         </CoachRoute>
       } />
-      
-      <Route path="/coach/events/:id" element={
-        <CoachRoute>
-          <CoachLayout>
-            <CoachEventDetail />
-          </CoachLayout>
-        </CoachRoute>
-      } />
-      
+
       <Route path="/coach/events/create" element={
         <CoachRoute>
           <CoachLayout>
             <CoachCreateEvent />
+          </CoachLayout>
+        </CoachRoute>
+      } />
+
+      <Route path="/coach/events/import-pdf" element={
+        <CoachRoute>
+          <CoachLayout>
+            <ImportMatchesPDF />
+          </CoachLayout>
+        </CoachRoute>
+      } />
+
+      <Route path="/coach/events/:id" element={
+        <CoachRoute>
+          <CoachLayout>
+            <CoachEventDetail />
           </CoachLayout>
         </CoachRoute>
       } />
