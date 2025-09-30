@@ -62,6 +62,7 @@ import PlayerProgress from './pages/coach/PlayerProgress';
 import CoachTeamDetail from './pages/coach/TeamDetail';
 import CoachTeams from './pages/coach/Teams';
 import CoachPools from './pages/coach/Pools';
+import ImportMatchesPDF from './pages/coach/ImportMatchesPDF';
 import Home from './pages/Home';
 import NotFound from './pages/NotFound';
 import Offline from './pages/Offline';
@@ -423,6 +424,7 @@ const AppContent = () => {
                   <Route path="/" element={<CoachDashboard />} />
                   <Route path="/events" element={<CoachEvents />} />
                   <Route path="/events/create" element={<CoachCreateEvent />} />
+                  <Route path="/events/import-pdf" element={<ImportMatchesPDF />} />
                   <Route path="/events/:id" element={<CoachEventDetail />} />
                   <Route path="/events/:id/edit" element={<CoachEditEvent />} />
                   <Route path="/teams" element={<CoachTeams />} />

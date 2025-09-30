@@ -18,7 +18,8 @@ import {
   AccessTime,
   CalendarToday,
   SportsVolleyball,
-  HelpOutline
+  HelpOutline,
+  UploadFile
 } from '@mui/icons-material';
 import {
   Box,
@@ -263,16 +264,27 @@ const getAttendanceStatusChip = (event) => {
         <Typography variant="h4" component="h1">
           Termine
         </Typography>
-        
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<Add />}
-          component={RouterLink}
-          to="/coach/events/create"
-        >
-          Neuer Termin
-        </Button>
+
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="outlined"
+            color="primary"
+            startIcon={<UploadFile />}
+            component={RouterLink}
+            to="/coach/events/import-pdf"
+          >
+            Spielplan importieren
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<Add />}
+            component={RouterLink}
+            to="/coach/events/create"
+          >
+            Neuer Termin
+          </Button>
+        </Box>
       </Box>
       
       <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
