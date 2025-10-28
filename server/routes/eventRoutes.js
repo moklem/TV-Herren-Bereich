@@ -7,8 +7,21 @@ const User = require('../models/User');
 const { sendGuestInvitation } = require('../controllers/notificationController');
 const { scheduleEventNotifications } = require('../utils/notificationQueue');
 const { processTrainingPoolAutoInvite, processVotingDeadlineAutoDecline } = require('../utils/trainingPoolAutoInvite');
+const { toBerlinTime, formatBerlinTime, nowInBerlin } = require('../utils/timezoneUtils');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
+
+/**
+ * TIMEZONE HANDLING:
+ * All event dates are stored in UTC in MongoDB and automatically handled by JavaScript's Date object.
+ * The browser automatically converts between the user's local timezone (Europe/Berlin) and UTC.
+ *
+ * DST (Daylight Saving Time) is handled automatically:
+ * - Summer time (CEST): UTC+2
+ * - Winter time (CET): UTC+1
+ *
+ * The timezoneUtils module is available for any manual timezone conversions if needed.
+ */
 
 // Helper function to generate recurring events
 const generateRecurringEvents = (baseEvent, pattern, endDate) => {
