@@ -7,6 +7,21 @@ const User = require('../models/User');
 const { sendGuestInvitation } = require('../controllers/notificationController');
 const { scheduleEventNotifications } = require('../utils/notificationQueue');
 const { processTrainingPoolAutoInvite, processVotingDeadlineAutoDecline } = require('../utils/trainingPoolAutoInvite');
+const { toBerlinTime, formatBerlinTime, nowInBerlin } = require('../utils/timezoneUtils');
+const multer = require('multer');
+const pdfParse = require('pdf-parse');
+
+/**
+ * TIMEZONE HANDLING:
+ * All event dates are stored in UTC in MongoDB and automatically handled by JavaScript's Date object.
+ * The browser automatically converts between the user's local timezone (Europe/Berlin) and UTC.
+ *
+ * DST (Daylight Saving Time) is handled automatically:
+ * - Summer time (CEST): UTC+2
+ * - Winter time (CET): UTC+1
+ *
+ * The timezoneUtils module is available for any manual timezone conversions if needed.
+ */
 
 // Helper function to generate recurring events
 const generateRecurringEvents = (baseEvent, pattern, endDate) => {
@@ -263,6 +278,120 @@ router.post('/', protect, coach, async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Configure multer for memory storage
+const upload = multer({ storage: multer.memoryStorage() });
+
+// @route   POST /api/events/parse-pdf
+// @desc    Parse match schedule PDF and extract match data
+// @access  Private/Coach
+router.post('/parse-pdf', protect, coach, upload.single('pdf'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Keine PDF-Datei hochgeladen' });
+    }
+
+    // Parse PDF
+    const pdfData = await pdfParse(req.file.buffer);
+    const text = pdfData.text;
+
+    // Extract matches from "1.2. Spielplan" section
+    const spielplanMatch = text.match(/1\.2\.\s*Spielplan[\s\S]*?(?=\n\s*Halle|$)/);
+    if (!spielplanMatch) {
+      return res.status(400).json({ message: 'Spielplan-Sektion nicht gefunden' });
+    }
+
+    const spielplanText = spielplanMatch[0];
+
+    // Extract hall information
+    const halleMatch = text.match(/Halle[\s\S]*?(?=\n\s*1\.3\.|$)/);
+    const hallMap = {};
+
+    if (halleMatch) {
+      const halleText = halleMatch[0];
+      // Parse hall information: HallCode Name Address PLZ Ort
+      const halleLines = halleText.split('\n').filter(line => line.trim());
+
+      for (const line of halleLines) {
+        // Match pattern like: "Schw1 Hans-Simon-Halle Mittelbügweg 11 90571 Schwaig"
+        const hallMatch = line.match(/^([A-Za-z]+\d+)\s+(.+?)\s+(.+?)\s+(\d{5})\s+(.+)$/);
+        if (hallMatch) {
+          const [, code, name, address, plz, ort] = hallMatch;
+          hallMap[code] = {
+            name: name.trim(),
+            address: address.trim(),
+            plz: plz.trim(),
+            ort: ort.trim()
+          };
+        }
+      }
+    }
+
+    // Parse matches
+    const matches = [];
+    const lines = spielplanText.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      // Match pattern: Nr Datum Zeit Team A Team B Ergebnis Halle
+      // Example: "1 11.10.2025 14:00 TV Hersbruck TV Fürth 1860 III -:- Hers1"
+      const matchRegex = /^(\d+)\s+(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})\s+(.+?)\s+(.+?)\s+-:-\s*(.*)$/;
+      const match = line.match(matchRegex);
+
+      if (match) {
+        const [, nr, datum, zeit, teamAFull, teamBAndHalle] = match;
+
+        // Split teamB and Halle - the last word might be the hall code
+        const parts = teamBAndHalle.trim().split(/\s+/);
+        let halleCode = '';
+        let teamB = teamBAndHalle.trim();
+
+        // Check if last part matches hall code pattern (letters + numbers)
+        if (parts.length > 1 && /^[A-Za-z]+\d+$/.test(parts[parts.length - 1])) {
+          halleCode = parts[parts.length - 1];
+          teamB = parts.slice(0, -1).join(' ');
+        }
+
+        // Get location details from hall map
+        let location = '';
+        if (halleCode && hallMap[halleCode]) {
+          const hall = hallMap[halleCode];
+          location = `${hall.name}, ${hall.address}, ${hall.plz} ${hall.ort}`;
+        } else if (halleCode) {
+          location = halleCode;
+        }
+
+        matches.push({
+          nr: parseInt(nr),
+          datum,
+          zeit,
+          teamA: teamAFull.trim(),
+          teamB: teamB.trim(),
+          halleCode,
+          location
+        });
+      }
+    }
+
+    // Extract unique team names
+    const teams = new Set();
+    matches.forEach(match => {
+      teams.add(match.teamA);
+      teams.add(match.teamB);
+    });
+
+    res.json({
+      matches,
+      teams: Array.from(teams).sort(),
+      totalMatches: matches.length
+    });
+
+  } catch (error) {
+    console.error('PDF parsing error:', error);
+    res.status(500).json({ message: 'Fehler beim Parsen der PDF-Datei', error: error.message });
   }
 });
 

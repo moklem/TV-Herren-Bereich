@@ -2,7 +2,7 @@
   "metadata": {
     "projectName": "volleyball-app",
     "description": "Eine Progressive Web App zur Verwaltung von Volleyball-Teams und zur Integration von Jugendspielern",
-    "version": "1.9.2",
+    "version": "1.9.3",
     "type": "Progressive Web Application",
     "primaryLanguage": "JavaScript",
     "techStack": {
@@ -34,7 +34,7 @@
       "database": "MongoDB Atlas",
       "region": "Frankfurt"
     },
-    "lastAnalyzed": "2025-09-02T15:00:00.000Z"
+    "lastAnalyzed": "2025-10-28T14:30:00.000Z"
   },
   "developmentPhase": "production",
   "completionPercentage": 99,
@@ -309,6 +309,34 @@
   ],
   "inProgressFeatures": [],
   "recentChanges": [
+    {
+      "timestamp": "2025-10-28T14:30:00.000Z",
+      "filesModified": [
+        "server/routes/eventRoutes.js",
+        "server/package.json",
+        "project-status.json"
+      ],
+      "filesAdded": [
+        "server/utils/timezoneUtils.js",
+        "server/scripts/fix-timezone-issue.js",
+        "TIMEZONE-FIX-INSTRUCTIONS.md"
+      ],
+      "filesDeleted": [],
+      "summary": "Implemented timezone handling for DST (Daylight Saving Time) transitions",
+      "changes": [
+        "Added date-fns-tz dependency (2.0.0) for proper timezone handling",
+        "Created timezoneUtils.js module with Europe/Berlin timezone utilities",
+        "Implemented helper functions: toUTC, toBerlinTime, formatBerlinTime, nowInBerlin, isDST",
+        "Created migration script to fix existing event times affected by summer/winter time change",
+        "Migration script adds 1 hour to all events created during summer time",
+        "Added safety flag (_fixesApplied) to prevent double-migration",
+        "Updated eventRoutes.js with timezone utility imports and documentation",
+        "Created comprehensive TIMEZONE-FIX-INSTRUCTIONS.md with usage guide",
+        "Added detailed troubleshooting and verification steps",
+        "Migration script includes Render.com deployment instructions"
+      ],
+      "impact": "Fixed critical timezone issue where all events were showing 1 hour early after the DST change from summer time (CEST, UTC+2) to winter time (CET, UTC+1) on October 27, 2025. The system now properly handles timezone conversions and future DST transitions will be handled automatically. The migration script safely fixes all existing events without data loss, and can be run multiple times without side effects. Future events will be correctly handled automatically by the browser's timezone conversion."
+    },
     {
       "timestamp": "2025-09-02T15:00:00.000Z",
       "filesModified": [
