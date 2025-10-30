@@ -2,7 +2,7 @@
   "metadata": {
     "projectName": "volleyball-app",
     "description": "Eine Progressive Web App zur Verwaltung von Volleyball-Teams und zur Integration von Jugendspielern",
-    "version": "1.9.3",
+    "version": "1.9.4",
     "type": "Progressive Web Application",
     "primaryLanguage": "JavaScript",
     "techStack": {
@@ -34,7 +34,7 @@
       "database": "MongoDB Atlas",
       "region": "Frankfurt"
     },
-    "lastAnalyzed": "2025-10-28T14:30:00.000Z"
+    "lastAnalyzed": "2025-10-30T10:00:00.000Z"
   },
   "developmentPhase": "production",
   "completionPercentage": 99,
@@ -279,14 +279,6 @@
     {
       "category": "User Engagement & Onboarding",
       "features": [
-        "Self-Rating Banner System for encouraging player self-assessments",
-        "Role-based banner behavior: youth players see banner until completion, senior players see once and can dismiss",
-        "Banner dismissal tracking with localStorage for senior players",
-        "Automatic self-assessment completion checking using API calls",
-        "Navigation integration from banner directly to self-assessment page",
-        "Visual gradient design with Material-UI components and icons",
-        "Mobile-responsive banner implementation with proper spacing",
-        "German language interface with motivational content about the new rating system",
         "Prominent self-assessment button added to statistics page with gradient styling",
         "Conditional info alerts for incomplete self-assessments with helpful tips"
       ]
@@ -309,6 +301,23 @@
   ],
   "inProgressFeatures": [],
   "recentChanges": [
+    {
+      "timestamp": "2025-10-30T10:00:00.000Z",
+      "filesModified": [
+        "client/src/pages/player/Dashboard.js",
+        "project-status.json"
+      ],
+      "filesAdded": [],
+      "filesDeleted": [],
+      "summary": "Removed Self-Rating Banner from Player Dashboard",
+      "changes": [
+        "Removed SelfRatingBanner component import from Dashboard.js",
+        "Removed SelfRatingBanner component usage from player dashboard rendering",
+        "Cleaned up user engagement features list in project documentation",
+        "Updated project version from 1.9.3 to 1.9.4"
+      ],
+      "impact": "The self-rating banner about the new rating system (Neues Bewertungssystem) has been completely removed from the player dashboard as it is no longer relevant. Players will no longer see the promotional banner when they log in. The SelfRatingBanner component file remains in the codebase but is no longer being used. This improves the player dashboard user experience by removing outdated promotional content."
+    },
     {
       "timestamp": "2025-10-28T14:30:00.000Z",
       "filesModified": [
