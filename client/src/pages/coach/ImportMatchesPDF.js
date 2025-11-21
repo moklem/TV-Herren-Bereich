@@ -100,29 +100,9 @@ const ImportMatchesPDF = () => {
   // Identify which teams the user coaches
   useEffect(() => {
     if (teams.length > 0 && user) {
-      console.log('Filtering coach teams. Total teams:', teams.length);
-      console.log('Current user ID:', user._id);
-
-      const coachTeams = teams.filter(team => {
-        // Defensive check: ensure team.coaches exists and is an array
-        if (!team.coaches || !Array.isArray(team.coaches)) {
-          console.log(`Team ${team.name} has no coaches array`);
-          return false;
-        }
-
-        // Convert IDs to strings for comparison to handle ObjectId vs String
-        const isCoach = team.coaches.some(coach =>
-          String(coach._id) === String(user._id)
-        );
-
-        if (isCoach) {
-          console.log(`User is coach of team: ${team.name}`);
-        }
-
-        return isCoach;
-      });
-
-      console.log('Filtered coach teams:', coachTeams.length, coachTeams.map(t => t.name));
+      const coachTeams = teams.filter(team =>
+        team.coaches.some(coach => coach._id === user._id)
+      );
       setUserCoachTeams(coachTeams);
     }
   }, [teams, user]);
