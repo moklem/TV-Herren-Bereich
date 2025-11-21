@@ -210,12 +210,33 @@ const ImportMatchesPDF = () => {
         }
       );
 
+      console.log('PDF upload response:', response.data);
+      console.log('Matches found:', response.data.matches.length);
+      console.log('Teams extracted:', response.data.teams);
+
       setUploadedMatches(response.data.matches);
       setAvailableTeams(response.data.teams);
-      setActiveStep(1);
+
+      // Show warning if no teams found
+      if (response.data.teams.length === 0) {
+        setUploadError('PDF wurde hochgeladen, aber keine Teams gefunden. Bitte überprüfen Sie das Backend-Log für Details.');
+      } else {
+        setActiveStep(1);
+      }
     } catch (error) {
-      setUploadError(error.response?.data?.message || 'Fehler beim Hochladen der PDF');
+      const errorMessage = error.response?.data?.message || 'Fehler beim Hochladen der PDF';
+      const debugInfo = error.response?.data?.debugInfo;
+
       console.error('Upload error:', error);
+      console.error('Error response:', error.response?.data);
+
+      if (debugInfo) {
+        console.log('PDF Debug Info:');
+        console.log('Text preview:', debugInfo.textPreview);
+        console.log('Text length:', debugInfo.textLength);
+      }
+
+      setUploadError(errorMessage);
     } finally {
       setUploading(false);
     }
