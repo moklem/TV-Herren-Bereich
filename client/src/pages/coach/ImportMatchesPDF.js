@@ -218,13 +218,13 @@ const ImportMatchesPDF = () => {
       if (response.data.debug) {
         console.log('=== PDF DEBUG INFO ===');
         console.log('PDF Text Length:', response.data.debug.pdfTextLength);
-        console.log('PDF Text Preview:', response.data.debug.pdfTextPreview);
-        console.log('Spielplan Found:', response.data.debug.spielplanFound);
-        console.log('Spielplan Preview:', response.data.debug.spielplanPreview);
+        console.log('PDF Text Preview (first 1000 chars):', response.data.debug.pdfTextPreview);
+        console.log('PDF Middle Section Sample:', response.data.debug.fullPdfSample);
         console.log('Total Lines:', response.data.debug.totalLines);
         console.log('Matched Lines:', response.data.debug.matchedLines);
         console.log('Unmatched Lines Sample:', response.data.debug.unmatchedLinesSample);
-        console.log('First Few Lines:', response.data.debug.firstFewLines);
+        console.log('First 30 Lines:', response.data.debug.firstFewLines);
+        console.log('Lines around 100:', response.data.debug.linesAround100);
         console.log('=== END DEBUG INFO ===');
       }
 

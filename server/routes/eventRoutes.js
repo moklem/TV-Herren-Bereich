@@ -299,37 +299,26 @@ router.post('/parse-pdf', protect, coach, upload.single('pdf'), async (req, res)
 
     console.log('=== PDF PARSING DEBUG ===');
     console.log('PDF text length:', text.length);
-    console.log('First 500 characters:', text.substring(0, 500));
+    console.log('First 1000 characters:', text.substring(0, 1000));
 
-    // Extract matches from "1.2. Spielplan" section
-    const spielplanMatch = text.match(/1\.2\.\s*Spielplan[\s\S]*?(?=\n\s*Halle|$)/);
-    if (!spielplanMatch) {
-      console.log('ERROR: Could not find "1.2. Spielplan" section');
-      console.log('Available text sections:', text.substring(0, 1000));
-      return res.status(400).json({
-        message: 'Spielplan-Sektion nicht gefunden. Bitte überprüfen Sie das PDF-Format.',
-        debugInfo: {
-          textPreview: text.substring(0, 500),
-          textLength: text.length
-        }
-      });
-    }
+    // Search entire PDF for match data (not just Spielplan section)
+    // The PDF might have a table structure where columns are separated
+    const matches = [];
+    const lines = text.split('\n');
 
-    const spielplanText = spielplanMatch[0];
-    console.log('Found Spielplan section, length:', spielplanText.length);
-    console.log('Spielplan preview:', spielplanText.substring(0, 500));
+    console.log('Total lines in entire PDF:', lines.length);
+    let matchedLines = 0;
+    let unmatchedLines = [];
 
-    // Extract hall information
+    // Extract hall information for later use
     const halleMatch = text.match(/Halle[\s\S]*?(?=\n\s*1\.3\.|$)/);
     const hallMap = {};
 
     if (halleMatch) {
       const halleText = halleMatch[0];
-      // Parse hall information: HallCode Name Address PLZ Ort
       const halleLines = halleText.split('\n').filter(line => line.trim());
 
       for (const line of halleLines) {
-        // Match pattern like: "Schw1 Hans-Simon-Halle Mittelbügweg 11 90571 Schwaig"
         const hallMatch = line.match(/^([A-Za-z]+\d+)\s+(.+?)\s+(.+?)\s+(\d{5})\s+(.+)$/);
         if (hallMatch) {
           const [, code, name, address, plz, ort] = hallMatch;
@@ -343,39 +332,62 @@ router.post('/parse-pdf', protect, coach, upload.single('pdf'), async (req, res)
       }
     }
 
-    // Parse matches
-    const matches = [];
-    const lines = spielplanText.split('\n');
-
-    console.log('Total lines to process:', lines.length);
-    let matchedLines = 0;
-    let unmatchedLines = [];
-
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
 
-      // Skip empty lines
-      if (!line) continue;
+      // Skip empty lines and header lines
+      if (!line || line.includes('Team A') || line.includes('Datum') || line === 'Nr' || line === 'Zeit' || line === 'Ergebnis') {
+        continue;
+      }
 
-      // Match pattern: Nr Datum Zeit Team A Team B Ergebnis Halle
+      // Try multiple patterns for different PDF formats
+      let match = null;
+      let nr, datum, zeit, teamA, teamB, extra;
+
+      // Pattern 1: Standard space-separated with -:-
       // Example: "1 11.10.2025 14:00 TV Hersbruck TV Fürth 1860 III -:- Hers1"
-      const matchRegex = /^(\d+)\s+(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})\s+(.+?)\s+(.+?)\s+-:-\s*(.*)$/;
-      const match = line.match(matchRegex);
+      const pattern1 = line.match(/^(\d+)\s+(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})\s+(.+?)\s+(.+?)\s+-:-\s*(.*)$/);
+      if (pattern1) {
+        [, nr, datum, zeit, teamA, teamB, extra] = pattern1;
+        match = true;
+      }
+
+      // Pattern 2: Just number, date, and time on same line (teams might be on next lines)
+      // This handles PDFs where each column is a separate line
+      if (!match && /^(\d+)\s+(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})$/.test(line)) {
+        const parts = line.match(/^(\d+)\s+(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})$/);
+        if (parts && i + 2 < lines.length) {
+          nr = parts[1];
+          datum = parts[2];
+          zeit = parts[3];
+          teamA = lines[i + 1].trim();
+          teamB = lines[i + 2].trim();
+          extra = lines[i + 3] ? lines[i + 3].trim() : '';
+
+          // Skip if these look like headers
+          if (teamA && teamB && teamA !== 'Team A' && teamB !== 'Team B' && teamA !== 'Ergebnis') {
+            match = true;
+            i += 2; // Skip the next 2 lines since we've used them
+          }
+        }
+      }
 
       if (match) {
         matchedLines++;
-        const [, nr, datum, zeit, teamAFull, teamBAndHalle] = match;
-        console.log(`Match ${matchedLines}: ${teamAFull} vs ${teamBAndHalle}`);
+        console.log(`Match ${matchedLines} (line ${i}): Nr=${nr}, Date=${datum}, Time=${zeit}, TeamA=${teamA}, TeamB=${teamB}`);
 
-        // Split teamB and Halle - the last word might be the hall code
-        const parts = teamBAndHalle.trim().split(/\s+/);
+        // Extract hall code from extra field or teamB
         let halleCode = '';
-        let teamB = teamBAndHalle.trim();
+        let finalTeamB = teamB;
+
+        // Check if there's a hall code in the extra field or at the end of teamB
+        const combinedText = `${teamB} ${extra || ''}`.trim();
+        const parts = combinedText.split(/\s+/);
 
         // Check if last part matches hall code pattern (letters + numbers)
         if (parts.length > 1 && /^[A-Za-z]+\d+$/.test(parts[parts.length - 1])) {
           halleCode = parts[parts.length - 1];
-          teamB = parts.slice(0, -1).join(' ');
+          finalTeamB = parts.slice(0, -1).join(' ');
         }
 
         // Get location details from hall map
@@ -391,14 +403,14 @@ router.post('/parse-pdf', protect, coach, upload.single('pdf'), async (req, res)
           nr: parseInt(nr),
           datum,
           zeit,
-          teamA: teamAFull.trim(),
-          teamB: teamB.trim(),
+          teamA: teamA.trim(),
+          teamB: finalTeamB.trim(),
           halleCode,
           location
         });
       } else {
-        // Log unmatched lines for debugging (skip header lines)
-        if (line.length > 5 && !line.includes('Spielplan') && !line.includes('Nr')) {
+        // Log unmatched lines for debugging (skip header lines and short lines)
+        if (line.length > 5 && !line.includes('Spielplan') && line !== 'Nr' && !line.includes('Team')) {
           unmatchedLines.push(line);
         }
       }
@@ -426,13 +438,13 @@ router.post('/parse-pdf', protect, coach, upload.single('pdf'), async (req, res)
       totalMatches: matches.length,
       debug: {
         pdfTextLength: text.length,
-        pdfTextPreview: text.substring(0, 500),
-        spielplanFound: true,
-        spielplanPreview: spielplanText.substring(0, 500),
+        pdfTextPreview: text.substring(0, 1000),
+        fullPdfSample: text.substring(2000, 4000), // Middle section sample
         totalLines: lines.length,
         matchedLines,
         unmatchedLinesSample: unmatchedLines.slice(0, 10),
-        firstFewLines: lines.slice(0, 20).map((l, i) => `${i}: ${l}`)
+        firstFewLines: lines.slice(0, 30).map((l, i) => `${i}: ${l}`),
+        linesAround100: lines.slice(95, 115).map((l, i) => `${i + 95}: ${l}`)
       }
     });
 
