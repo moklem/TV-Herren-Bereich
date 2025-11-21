@@ -214,12 +214,26 @@ const ImportMatchesPDF = () => {
       console.log('Matches found:', response.data.matches.length);
       console.log('Teams extracted:', response.data.teams);
 
+      // Log debug information if available
+      if (response.data.debug) {
+        console.log('=== PDF DEBUG INFO ===');
+        console.log('PDF Text Length:', response.data.debug.pdfTextLength);
+        console.log('PDF Text Preview:', response.data.debug.pdfTextPreview);
+        console.log('Spielplan Found:', response.data.debug.spielplanFound);
+        console.log('Spielplan Preview:', response.data.debug.spielplanPreview);
+        console.log('Total Lines:', response.data.debug.totalLines);
+        console.log('Matched Lines:', response.data.debug.matchedLines);
+        console.log('Unmatched Lines Sample:', response.data.debug.unmatchedLinesSample);
+        console.log('First Few Lines:', response.data.debug.firstFewLines);
+        console.log('=== END DEBUG INFO ===');
+      }
+
       setUploadedMatches(response.data.matches);
       setAvailableTeams(response.data.teams);
 
       // Show warning if no teams found
       if (response.data.teams.length === 0) {
-        setUploadError('PDF wurde hochgeladen, aber keine Teams gefunden. Bitte überprüfen Sie das Backend-Log für Details.');
+        setUploadError('PDF wurde hochgeladen, aber keine Teams gefunden. Überprüfen Sie die Browser-Konsole für Debug-Informationen.');
       } else {
         setActiveStep(1);
       }

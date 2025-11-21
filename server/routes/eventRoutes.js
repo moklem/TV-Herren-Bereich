@@ -423,7 +423,17 @@ router.post('/parse-pdf', protect, coach, upload.single('pdf'), async (req, res)
     res.json({
       matches,
       teams: Array.from(teams).sort(),
-      totalMatches: matches.length
+      totalMatches: matches.length,
+      debug: {
+        pdfTextLength: text.length,
+        pdfTextPreview: text.substring(0, 500),
+        spielplanFound: true,
+        spielplanPreview: spielplanText.substring(0, 500),
+        totalLines: lines.length,
+        matchedLines,
+        unmatchedLinesSample: unmatchedLines.slice(0, 10),
+        firstFewLines: lines.slice(0, 20).map((l, i) => `${i}: ${l}`)
+      }
     });
 
   } catch (error) {
