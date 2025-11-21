@@ -299,13 +299,24 @@ router.post('/parse-pdf', protect, coach, upload.single('pdf'), async (req, res)
 
     console.log('=== PDF PARSING DEBUG ===');
     console.log('PDF text length:', text.length);
-    console.log('First 1000 characters:', text.substring(0, 1000));
 
-    // Search entire PDF for match data (not just Spielplan section)
-    // The PDF might have a table structure where columns are separated
+    // Try different ways to split the text
+    const linesByNewline = text.split('\n');
+    const linesByReturn = text.split('\r');
+    const linesByBoth = text.split(/\r?\n/);
+
+    console.log('Lines split by \\n:', linesByNewline.length);
+    console.log('Lines split by \\r:', linesByReturn.length);
+    console.log('Lines split by \\r?\\n:', linesByBoth.length);
+
+    // Use the split method that gives us the most lines
+    let lines = linesByNewline;
+    if (linesByReturn.length > lines.length) lines = linesByReturn;
+    if (linesByBoth.length > lines.length) lines = linesByBoth;
+
+    console.log('Using split method with', lines.length, 'lines');
+
     const matches = [];
-    const lines = text.split('\n');
-
     console.log('Total lines in entire PDF:', lines.length);
     let matchedLines = 0;
     let unmatchedLines = [];
@@ -438,13 +449,18 @@ router.post('/parse-pdf', protect, coach, upload.single('pdf'), async (req, res)
       totalMatches: matches.length,
       debug: {
         pdfTextLength: text.length,
-        pdfTextPreview: text.substring(0, 1000),
-        fullPdfSample: text.substring(2000, 4000), // Middle section sample
+        rawTextChunk1: text.substring(0, 2000),
+        rawTextChunk2: text.substring(2000, 4000),
+        rawTextChunk3: text.substring(4000, 6000),
+        rawTextChunk4: text.substring(6000, 8000),
+        linesByNewline: linesByNewline.length,
+        linesByReturn: linesByReturn.length,
+        linesByBoth: linesByBoth.length,
         totalLines: lines.length,
         matchedLines,
         unmatchedLinesSample: unmatchedLines.slice(0, 10),
-        firstFewLines: lines.slice(0, 30).map((l, i) => `${i}: ${l}`),
-        linesAround100: lines.slice(95, 115).map((l, i) => `${i + 95}: ${l}`)
+        firstFewLines: lines.slice(0, 50).map((l, i) => `${i}: ${l}`),
+        allLinesIfSmall: lines.length < 20 ? lines.map((l, i) => `${i}: ${l}`) : null
       }
     });
 

@@ -218,13 +218,23 @@ const ImportMatchesPDF = () => {
       if (response.data.debug) {
         console.log('=== PDF DEBUG INFO ===');
         console.log('PDF Text Length:', response.data.debug.pdfTextLength);
-        console.log('PDF Text Preview (first 1000 chars):', response.data.debug.pdfTextPreview);
-        console.log('PDF Middle Section Sample:', response.data.debug.fullPdfSample);
-        console.log('Total Lines:', response.data.debug.totalLines);
+        console.log('Lines by \\n:', response.data.debug.linesByNewline);
+        console.log('Lines by \\r:', response.data.debug.linesByReturn);
+        console.log('Lines by \\r?\\n:', response.data.debug.linesByBoth);
+        console.log('Total Lines Used:', response.data.debug.totalLines);
         console.log('Matched Lines:', response.data.debug.matchedLines);
-        console.log('Unmatched Lines Sample:', response.data.debug.unmatchedLinesSample);
-        console.log('First 30 Lines:', response.data.debug.firstFewLines);
-        console.log('Lines around 100:', response.data.debug.linesAround100);
+        console.log('--- RAW PDF TEXT (0-2000) ---');
+        console.log(response.data.debug.rawTextChunk1);
+        console.log('--- RAW PDF TEXT (2000-4000) ---');
+        console.log(response.data.debug.rawTextChunk2);
+        console.log('--- RAW PDF TEXT (4000-6000) ---');
+        console.log(response.data.debug.rawTextChunk3);
+        console.log('--- RAW PDF TEXT (6000-8000) ---');
+        console.log(response.data.debug.rawTextChunk4);
+        console.log('--- ALL LINES (if small) ---');
+        console.log(response.data.debug.allLinesIfSmall);
+        console.log('--- FIRST 50 LINES ---');
+        console.log(response.data.debug.firstFewLines);
         console.log('=== END DEBUG INFO ===');
       }
 
