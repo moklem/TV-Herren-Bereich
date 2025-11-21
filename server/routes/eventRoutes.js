@@ -297,13 +297,27 @@ router.post('/parse-pdf', protect, coach, upload.single('pdf'), async (req, res)
     const pdfData = await pdfParse(req.file.buffer);
     const text = pdfData.text;
 
+    console.log('=== PDF PARSING DEBUG ===');
+    console.log('PDF text length:', text.length);
+    console.log('First 500 characters:', text.substring(0, 500));
+
     // Extract matches from "1.2. Spielplan" section
     const spielplanMatch = text.match(/1\.2\.\s*Spielplan[\s\S]*?(?=\n\s*Halle|$)/);
     if (!spielplanMatch) {
-      return res.status(400).json({ message: 'Spielplan-Sektion nicht gefunden' });
+      console.log('ERROR: Could not find "1.2. Spielplan" section');
+      console.log('Available text sections:', text.substring(0, 1000));
+      return res.status(400).json({
+        message: 'Spielplan-Sektion nicht gefunden. Bitte überprüfen Sie das PDF-Format.',
+        debugInfo: {
+          textPreview: text.substring(0, 500),
+          textLength: text.length
+        }
+      });
     }
 
     const spielplanText = spielplanMatch[0];
+    console.log('Found Spielplan section, length:', spielplanText.length);
+    console.log('Spielplan preview:', spielplanText.substring(0, 500));
 
     // Extract hall information
     const halleMatch = text.match(/Halle[\s\S]*?(?=\n\s*1\.3\.|$)/);
@@ -333,8 +347,15 @@ router.post('/parse-pdf', protect, coach, upload.single('pdf'), async (req, res)
     const matches = [];
     const lines = spielplanText.split('\n');
 
+    console.log('Total lines to process:', lines.length);
+    let matchedLines = 0;
+    let unmatchedLines = [];
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
+
+      // Skip empty lines
+      if (!line) continue;
 
       // Match pattern: Nr Datum Zeit Team A Team B Ergebnis Halle
       // Example: "1 11.10.2025 14:00 TV Hersbruck TV Fürth 1860 III -:- Hers1"
@@ -342,7 +363,9 @@ router.post('/parse-pdf', protect, coach, upload.single('pdf'), async (req, res)
       const match = line.match(matchRegex);
 
       if (match) {
+        matchedLines++;
         const [, nr, datum, zeit, teamAFull, teamBAndHalle] = match;
+        console.log(`Match ${matchedLines}: ${teamAFull} vs ${teamBAndHalle}`);
 
         // Split teamB and Halle - the last word might be the hall code
         const parts = teamBAndHalle.trim().split(/\s+/);
@@ -373,7 +396,17 @@ router.post('/parse-pdf', protect, coach, upload.single('pdf'), async (req, res)
           halleCode,
           location
         });
+      } else {
+        // Log unmatched lines for debugging (skip header lines)
+        if (line.length > 5 && !line.includes('Spielplan') && !line.includes('Nr')) {
+          unmatchedLines.push(line);
+        }
       }
+    }
+
+    console.log(`Matched ${matchedLines} lines out of ${lines.length} total lines`);
+    if (unmatchedLines.length > 0) {
+      console.log('Sample of unmatched lines:', unmatchedLines.slice(0, 5));
     }
 
     // Extract unique team names
@@ -382,6 +415,10 @@ router.post('/parse-pdf', protect, coach, upload.single('pdf'), async (req, res)
       teams.add(match.teamA);
       teams.add(match.teamB);
     });
+
+    console.log('Extracted teams:', Array.from(teams));
+    console.log('Total matches found:', matches.length);
+    console.log('=== END PDF PARSING DEBUG ===');
 
     res.json({
       matches,
