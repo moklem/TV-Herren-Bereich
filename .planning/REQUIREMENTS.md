@@ -87,16 +87,35 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PERF-01 through PERF-07 | Phase 1 | Pending |
+| PERF-01 | Phase 1 | Pending |
+| PERF-02 | Phase 1 | Pending |
+| PERF-03 | Phase 1 | Pending |
+| PERF-04 | Phase 1 | Pending |
+| PERF-05 | Phase 1 | Pending |
+| PERF-06 | Phase 1 | Pending |
+| PERF-07 | Phase 1 | Pending |
 | LAYOUT-01 | Phase 2 | Pending |
-| CARPOOL-01 through CARPOOL-10 | Phase 3 | Pending |
-| FUND-01 through FUND-05 | Phase 4 | Pending |
+| CARPOOL-01 | Phase 3 | Pending |
+| CARPOOL-02 | Phase 3 | Pending |
+| CARPOOL-03 | Phase 3 | Pending |
+| CARPOOL-04 | Phase 3 | Pending |
+| CARPOOL-05 | Phase 3 | Pending |
+| CARPOOL-06 | Phase 3 | Pending |
+| CARPOOL-07 | Phase 3 | Pending |
+| CARPOOL-08 | Phase 3 | Pending |
+| CARPOOL-09 | Phase 3 | Pending |
+| CARPOOL-10 | Phase 3 | Pending |
+| FUND-01 | Phase 4 | Pending |
+| FUND-02 | Phase 4 | Pending |
+| FUND-03 | Phase 4 | Pending |
+| FUND-04 | Phase 4 | Pending |
+| FUND-05 | Phase 4 | Pending |
 
 **Coverage:**
-- v1 requirements: 22 total
-- Mapped to phases: 22
+- v1 requirements: 23 total
+- Mapped to phases: 23
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-02-23*
-*Last updated: 2026-02-23 after initial definition*
+*Last updated: 2026-02-23 — traceability expanded to individual rows, coverage corrected to 23*

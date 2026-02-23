@@ -1,0 +1,76 @@
+# Roadmap: InTeam — Volleyball Team Manager PWA
+
+## Overview
+
+This milestone adds four capabilities to an already-deployed production app: first stabilizing the backend so memory crashes stop, then repairing the broken PDF schedule import, then delivering the car pool organizer for away games, and finally the team fund / fine catalog. Each phase delivers a coherent capability to real coaches and players. App Store packaging is scoped to v2 once the core features are stable.
+
+## Phases
+
+**Phase Numbering:**
+- Integer phases (1, 2, 3): Planned milestone work
+- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+
+Decimal phases appear between their surrounding integers in numeric order.
+
+- [ ] **Phase 1: Backend Stability** - Eliminate memory crashes and reduce redundant load on Render.com free tier
+- [ ] **Phase 2: PDF Import + Mobile Layout** - Restore the broken schedule PDF import and fix the coach event page mobile layout
+- [ ] **Phase 3: Car Pool Organizer** - Let players self-register as driver or passenger; coach finalizes assignments with push notification
+- [ ] **Phase 4: Team Fund** - Per-team fine catalog with coach violation logging and player self-service balance view
+
+## Phase Details
+
+### Phase 1: Backend Stability
+**Goal**: The backend runs continuously under normal load without OOM crashes, memory usage is observable, and redundant server load is eliminated
+**Depends on**: Nothing (first phase)
+**Requirements**: PERF-01, PERF-02, PERF-03, PERF-04, PERF-05, PERF-06, PERF-07
+**Success Criteria** (what must be TRUE):
+  1. The app does not crash during normal usage on Render.com free tier — no OOM kills observed after the fix
+  2. A GET to `/api/health` returns current heap and RSS memory figures from `process.memoryUsage()`
+  3. PDF uploads larger than 10MB are rejected by the server before processing
+  4. `NODE_OPTIONS=--max-old-space-size=256` is active on Render.com and the process respects the cap
+  5. Only one notification scheduler runs — the persistent queue; the legacy scheduler is gone from `server.js`
+**Plans**: TBD
+
+### Phase 2: PDF Import + Mobile Layout
+**Goal**: Coaches can successfully import match schedules from volleyball federation PDFs, and the coach event page displays correctly on mobile
+**Depends on**: Phase 1
+**Requirements**: LAYOUT-01
+**Success Criteria** (what must be TRUE):
+  1. Coach event page renders without layout overflow or navigation overlap on a mobile viewport
+  2. The import PDF button on the coach event page is accessible and usable on mobile screens
+**Plans**: TBD
+
+### Phase 3: Car Pool Organizer
+**Goal**: Attending players can self-register as driver or passenger for match events; coach can assign passengers to drivers and finalize; every player sees their own assignment
+**Depends on**: Phase 1
+**Requirements**: CARPOOL-01, CARPOOL-02, CARPOOL-03, CARPOOL-04, CARPOOL-05, CARPOOL-06, CARPOOL-07, CARPOOL-08, CARPOOL-09, CARPOOL-10
+**Success Criteria** (what must be TRUE):
+  1. An attending player can register as driver (with seat count), as passenger, or withdraw/update their registration before finalization
+  2. Coach sees a live overview — all drivers with seat counts, all passengers, and any unassigned attending players
+  3. Coach can assign specific passengers to specific drivers and finalize the arrangement; once finalized the server rejects further player changes
+  4. Each player sees their own assignment: drivers see their passengers; passengers see their driver, meeting point, and departure time
+  5. Car pool controls are absent from training events — they appear only on match/game events
+**Plans**: TBD
+
+### Phase 4: Team Fund
+**Goal**: Each team has a coach-managed fine catalog; coaches log violations against players; players can view their own outstanding balance
+**Depends on**: Phase 3
+**Requirements**: FUND-01, FUND-02, FUND-03, FUND-04, FUND-05
+**Success Criteria** (what must be TRUE):
+  1. Coach can create, edit, and delete fine rules (label + amount) in the team's punishment catalog, and each team has its own independent catalog
+  2. Coach can log a violation against a player by selecting player, rule from catalog, optional date, and optional note
+  3. Player can view their own outstanding balance (sum of unpaid fines across their teams)
+  4. Player can view their own list of violations showing rule name, amount, date, and note for each entry
+**Plans**: TBD
+
+## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 1 → 2 → 3 → 4
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 1. Backend Stability | 0/? | Not started | - |
+| 2. PDF Import + Mobile Layout | 0/? | Not started | - |
+| 3. Car Pool Organizer | 0/? | Not started | - |
+| 4. Team Fund | 0/? | Not started | - |
