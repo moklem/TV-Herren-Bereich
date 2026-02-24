@@ -112,9 +112,6 @@ router.post('/', protect, coach, async (req, res) => {
       trainingPoolAutoInvite
     } = req.body;
 
-    // Debug logging for training pool auto-invite
-    console.log('Creating event with trainingPoolAutoInvite:', JSON.stringify(trainingPoolAutoInvite, null, 2));
-    
     // Validate trainingPoolAutoInvite - if poolId is empty, disable auto-invite
     if (trainingPoolAutoInvite?.enabled && !trainingPoolAutoInvite?.poolId) {
       console.warn('Auto-invite enabled but no pool selected, disabling auto-invite');
@@ -314,16 +311,11 @@ router.post('/parse-pdf', protect, coach, (req, res, next) => {
     const pdfData = await pdfParse(req.file.buffer);
     const text = pdfData.text;
 
-    console.log('=== PDF PARSING DEBUG ===');
-    console.log('PDF text length:', text.length);
-    console.log('First 1000 characters:', text.substring(0, 1000));
-
     // Search entire PDF for match data (not just Spielplan section)
     // The PDF might have a table structure where columns are separated
     const matches = [];
     const lines = text.split('\n');
 
-    console.log('Total lines in entire PDF:', lines.length);
     let matchedLines = 0;
     let unmatchedLines = [];
 
@@ -391,7 +383,6 @@ router.post('/parse-pdf', protect, coach, (req, res, next) => {
 
       if (match) {
         matchedLines++;
-        console.log(`Match ${matchedLines} (line ${i}): Nr=${nr}, Date=${datum}, Time=${zeit}, TeamA=${teamA}, TeamB=${teamB}`);
 
         // Extract hall code from extra field or teamB
         let halleCode = '';
@@ -433,21 +424,12 @@ router.post('/parse-pdf', protect, coach, (req, res, next) => {
       }
     }
 
-    console.log(`Matched ${matchedLines} lines out of ${lines.length} total lines`);
-    if (unmatchedLines.length > 0) {
-      console.log('Sample of unmatched lines:', unmatchedLines.slice(0, 5));
-    }
-
     // Extract unique team names
     const teams = new Set();
     matches.forEach(match => {
       teams.add(match.teamA);
       teams.add(match.teamB);
     });
-
-    console.log('Extracted teams:', Array.from(teams));
-    console.log('Total matches found:', matches.length);
-    console.log('=== END PDF PARSING DEBUG ===');
 
     res.json({
       matches,
@@ -670,9 +652,6 @@ router.put('/:id', protect, coach, async (req, res) => {
       trainingPoolAutoInvite
     } = req.body;
     
-    // Debug logging for training pool auto-invite
-    console.log('Updating event with trainingPoolAutoInvite:', JSON.stringify(trainingPoolAutoInvite, null, 2));
-    
     // Validate trainingPoolAutoInvite - if poolId is empty, disable auto-invite
     if (trainingPoolAutoInvite?.enabled && !trainingPoolAutoInvite?.poolId) {
       console.warn('Auto-invite enabled but no pool selected, disabling auto-invite');
@@ -735,8 +714,7 @@ router.put('/:id', protect, coach, async (req, res) => {
         if (trainingPoolAutoInvite !== undefined) event.trainingPoolAutoInvite = trainingPoolAutoInvite;
         
         await event.save();
-        console.log('Event saved with trainingPoolAutoInvite:', JSON.stringify(event.trainingPoolAutoInvite, null, 2));
-        
+
         // Schedule notifications for the parent event
         await scheduleEventNotifications(event._id);
         
