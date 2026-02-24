@@ -7,6 +7,8 @@ services:
     buildCommand: "./server/render-build.sh"
     startCommand: "cd server && node server.js"
     envVars:
+      - key: NODE_OPTIONS
+        value: "--max-old-space-size=512"
       - key: NODE_VERSION
         value: 18.17.0
       - key: NODE_ENV
