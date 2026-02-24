@@ -510,4 +510,9 @@ EventSchema.post('save', async function(doc) {
   }
 });
 
+// Indexes for background job queries and event list sort
+EventSchema.index({ startTime: 1 });
+EventSchema.index({ votingDeadline: 1, autoDeclineProcessed: 1 });
+EventSchema.index({ endTime: 1, attendanceAutoProcessed: 1 });
+
 module.exports = mongoose.model('Event', EventSchema);
