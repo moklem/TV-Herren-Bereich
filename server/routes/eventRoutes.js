@@ -311,6 +311,19 @@ router.post('/parse-pdf', protect, coach, (req, res, next) => {
     const pdfData = await pdfParse(req.file.buffer);
     const text = pdfData.text;
 
+    // Build hall abbreviation → full address map from the PDF's hall table
+    const hallMap = {};
+    const halleSection = text.match(/Halle[\s\S]*?(?=\n\s*1\.3\.|$)/);
+    if (halleSection) {
+      for (const line of halleSection[0].split('\n')) {
+        const m = line.match(/^([A-Za-z]+\d+)\s+(.+?)\s{2,}(.+?)\s{2,}(\d{5})\s+(.+)$/);
+        if (m) {
+          const [, code, name, address, plz, ort] = m;
+          hallMap[code.trim()] = `${name.trim()}, ${address.trim()}, ${plz} ${ort.trim()}`;
+        }
+      }
+    }
+
     // LLM-based match extraction via OpenRouter
     const llmRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -344,17 +357,21 @@ router.post('/parse-pdf', protect, coach, (req, res, next) => {
       matches = JSON.parse(jsonMatch[0]);
     }
 
-    // Normalize fields and filter out incomplete entries
+    // Normalize fields, resolve hall abbreviations, and filter out incomplete entries
     matches = matches
-      .map(m => ({
-        nr: parseInt(m.nr) || 0,
-        datum: (m.datum || '').trim(),
-        zeit: (m.zeit || '').trim(),
-        teamA: (m.teamA || '').trim(),
-        teamB: (m.teamB || '').trim(),
-        halleCode: '',
-        location: (m.location || '').trim()
-      }))
+      .map(m => {
+        const halleCode = (m.location || '').trim();
+        const location = hallMap[halleCode] || halleCode;
+        return {
+          nr: parseInt(m.nr) || 0,
+          datum: (m.datum || '').trim(),
+          zeit: (m.zeit || '').trim(),
+          teamA: (m.teamA || '').trim(),
+          teamB: (m.teamB || '').trim(),
+          halleCode,
+          location
+        };
+      })
       .filter(m => m.datum && m.teamA && m.teamB);
 
     const teams = [...new Set([...matches.map(m => m.teamA), ...matches.map(m => m.teamB)])].sort();
