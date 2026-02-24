@@ -216,7 +216,7 @@ router.post('/login', async (req, res) => {
 // @access  Private
 router.get('/profile', protect, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password');
+    const user = await User.findById(req.user._id).select('-password').lean();
     res.json(user);
   } catch (error) {
     console.error(error);
@@ -229,7 +229,7 @@ router.get('/profile', protect, async (req, res) => {
 // @access  Private/Coach
 router.get('/', protect, coach, async (req, res) => {
   try {
-    const users = await User.find({}).select('-password');
+    const users = await User.find({}).select('-password').lean();
     res.json(users);
   } catch (error) {
     console.error(error);
@@ -298,10 +298,11 @@ router.get('/players', protect, coach, async (req, res) => {
     console.log('Fetching players for coach:', req.user._id);
     
     // First, try without populate to see if that's the issue
-    const users = await User.find({ 
-      role: { $in: ['Spieler', 'Jugendspieler'] } 
+    const users = await User.find({
+      role: { $in: ['Spieler', 'Jugendspieler'] }
     })
-      .select('-password');
+      .select('-password')
+      .lean();
     
     // Then try to populate teams separately with error handling
     let populatedUsers = users;
@@ -336,8 +337,9 @@ router.get('/youth', protect, coach, async (req, res) => {
   try {
     const users = await User.find({ role: 'Jugendspieler' })
       .select('-password')
-      .populate('teams', 'name type');
-    
+      .populate('teams', 'name type')
+      .lean();
+
     res.json(users);
   } catch (error) {
     console.error(error);
@@ -352,8 +354,9 @@ router.get('/team/:teamId', protect, coach, async (req, res) => {
   try {
     const users = await User.find({ teams: req.params.teamId })
       .select('-password')
-      .populate('teams', 'name type');
-    
+      .populate('teams', 'name type')
+      .lean();
+
     res.json(users);
   } catch (error) {
     console.error(error);
@@ -368,12 +371,13 @@ router.get('/:id', protect, coach, async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
       .select('-password')
-      .populate('teams', 'name type');
-    
+      .populate('teams', 'name type')
+      .lean();
+
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    
+
     res.json(user);
   } catch (error) {
     console.error(error);
@@ -789,16 +793,16 @@ router.get('/reset-password/:token', async (req, res) => {
     const user = await User.findOne({
       resetPasswordToken: hashedToken,
       resetPasswordExpires: { $gt: Date.now() }
-    }).select('email name');
-    
+    }).select('email name').lean();
+
     if (!user) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: 'Ungültiger oder abgelaufener Reset-Link',
         valid: false
       });
     }
-    
-    res.status(200).json({ 
+
+    res.status(200).json({
       message: 'Gültiger Reset-Link',
       valid: true,
       email: user.email,

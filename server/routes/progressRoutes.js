@@ -46,7 +46,8 @@ router.get('/player/:playerId', protect, async (req, res) => {
     })
     .populate('player', 'name email position')
     .populate('updatedBy', 'name email')
-    .sort({ attributeName: 1 });
+    .sort({ attributeName: 1 })
+    .lean();
 
     // Process and format the data
     const progressData = {};
@@ -178,7 +179,7 @@ router.get('/milestones/:playerId', protect, async (req, res) => {
         { team: null },
         { team: { $exists: false } }
       ]
-    });
+    }).lean();
 
     const milestones = [];
     // Update milestone thresholds for absolute skill values (0-800 scale)
@@ -486,7 +487,7 @@ router.get('/stats/:playerId', protect, async (req, res) => {
         { team: null },
         { team: { $exists: false } }
       ]
-    });
+    }).lean();
 
     const stats = {
       player: {

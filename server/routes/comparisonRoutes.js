@@ -11,7 +11,7 @@ router.get('/team/:teamId/percentiles', protect, async (req, res) => {
     const userId = req.user.id;
 
     // Get team to find all players
-    const team = await Team.findById(teamId).populate('players', '_id name');
+    const team = await Team.findById(teamId).populate('players', '_id name').lean();
     if (!team) {
       return res.status(404).json({ message: 'Team nicht gefunden' });
     }
@@ -24,7 +24,7 @@ router.get('/team/:teamId/percentiles', protect, async (req, res) => {
         { team: null },
         { team: { $exists: false } }
       ]
-    }).populate('player', 'name');
+    }).populate('player', 'name').lean();
 
     // Group attributes by player to ensure we have complete data
     const playerAttributesMap = {};
@@ -137,7 +137,7 @@ router.get('/team/:teamId/distribution', protect, async (req, res) => {
     const { teamId } = req.params;
 
     // Get team to find all players
-    const team = await Team.findById(teamId).populate('players', '_id');
+    const team = await Team.findById(teamId).populate('players', '_id').lean();
     if (!team) {
       return res.status(404).json({ message: 'Team nicht gefunden' });
     }
@@ -150,7 +150,7 @@ router.get('/team/:teamId/distribution', protect, async (req, res) => {
         { team: null },
         { team: { $exists: false } }
       ]
-    });
+    }).lean();
 
     // Group attributes by player
     const playerAttributesMap = {};

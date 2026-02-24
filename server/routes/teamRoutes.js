@@ -49,19 +49,21 @@ router.get('/', protect, async (req, res) => {
     if (req.user.role === 'Trainer') {
       teams = await Team.find({})
         .populate('coaches', 'name email')
-        .populate('players', 'name email role position');
+        .populate('players', 'name email role position')
+        .lean();
     } else {
       // If user is a player, get only teams they belong to
-      teams = await Team.find({ 
+      teams = await Team.find({
         $or: [
           { players: req.user._id },
           { coaches: req.user._id }
         ]
       })
         .populate('coaches', 'name email')
-        .populate('players', 'name email role position');
+        .populate('players', 'name email role position')
+        .lean();
     }
-    
+
     res.json(teams);
   } catch (error) {
     console.error(error);
@@ -75,27 +77,28 @@ router.get('/', protect, async (req, res) => {
 router.get('/:id', protect, async (req, res) => {
   try {
     // First find the team without population to check membership
-    const teamCheck = await Team.findById(req.params.id);
-    
+    const teamCheck = await Team.findById(req.params.id).lean();
+
     if (!teamCheck) {
       return res.status(404).json({ message: 'Team not found' });
     }
-    
+
     // Check if user is authorized to view this team
     // For players, check if they are in the team
-    const isAuthorized = req.user.role === 'Trainer' || 
+    const isAuthorized = req.user.role === 'Trainer' ||
                         teamCheck.players.some(p => p.toString() === req.user._id.toString()) ||
                         teamCheck.coaches.some(c => c.toString() === req.user._id.toString());
-    
+
     if (!isAuthorized) {
       return res.status(403).json({ message: 'Not authorized to view this team' });
     }
-    
+
     // Now populate and return the full team data
     const team = await Team.findById(req.params.id)
       .populate('coaches', 'name email')
-      .populate('players', 'name email role birthDate position');
-    
+      .populate('players', 'name email role birthDate position')
+      .lean();
+
     res.json(team);
   } catch (error) {
     console.error(error);

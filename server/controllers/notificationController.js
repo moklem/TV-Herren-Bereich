@@ -261,8 +261,8 @@ exports.getStatus = async (req, res) => {
     const userId = req.user._id;
     const User = require('../models/User');
 
-    const subscription = await PushSubscription.findOne({ user: userId });
-    const user = await User.findById(userId);
+    const subscription = await PushSubscription.findOne({ user: userId }).lean();
+    const user = await User.findById(userId).lean();
 
     res.json({
       subscribed: !!subscription,

@@ -14,9 +14,9 @@ router.get('/', protect, async (req, res) => {
     
     if (req.user.role === 'Trainer') {
       // Coaches see pools for their teams and all league pools
-      const teams = await Team.find({ coaches: req.user._id });
+      const teams = await Team.find({ coaches: req.user._id }).lean();
       const teamIds = teams.map(t => t._id);
-      
+
       pools = await TrainingPool.find({
         $or: [
           { team: { $in: teamIds }, type: 'team' },
@@ -26,9 +26,9 @@ router.get('/', protect, async (req, res) => {
       });
     } else {
       // Players see pools they're in, pools for their teams, and all league pools
-      const teams = await Team.find({ players: req.user._id });
+      const teams = await Team.find({ players: req.user._id }).lean();
       const teamIds = teams.map(t => t._id);
-      
+
       pools = await TrainingPool.find({
         $or: [
           { team: { $in: teamIds }, type: 'team' },
@@ -69,12 +69,13 @@ router.get('/:id', protect, async (req, res) => {
       .populate('team', 'name type')
       .populate('approvedPlayers.player', 'name email position')
       .populate('pendingApproval.player', 'name email position')
-      .populate('eligiblePlayers.player', 'name email position');
-    
+      .populate('eligiblePlayers.player', 'name email position')
+      .lean();
+
     if (!pool) {
       return res.status(404).json({ message: 'Trainingspool nicht gefunden' });
     }
-    
+
     res.json(pool);
   } catch (error) {
     console.error('Error fetching training pool:', error);
@@ -555,23 +556,25 @@ router.delete('/:id/remove-player/:playerId', protect, coach, async (req, res) =
 // Get available pools for an event (for auto-invite)
 router.get('/event/:eventId/available', protect, coach, async (req, res) => {
   try {
-    const event = await Event.findById(req.params.eventId).populate('team');
-    
+    const event = await Event.findById(req.params.eventId).populate('team').lean();
+
     if (!event) {
       return res.status(404).json({ message: 'Event nicht gefunden' });
     }
-    
+
+    const teamId = event.team?._id || event.team;
     // Get pools for this team and league pools
     const pools = await TrainingPool.find({
       $or: [
-        { team: event.team._id, type: 'team' },
+        { team: teamId, type: 'team' },
         { type: 'league' }
       ],
       active: true,
       'approvedPlayers.0': { $exists: true } // Has at least one approved player
     })
     .populate('approvedPlayers.player', 'name position')
-    .select('name type leagueLevel approvedPlayers');
+    .select('name type leagueLevel approvedPlayers')
+    .lean();
     
     // Filter out players already invited to the event
     const invitedPlayerIds = [
