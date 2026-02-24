@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 
 ## Current Position
 
-Phase: 1 of 4 (Backend Stability) — COMPLETE
-Plan: 4 of 4 in current phase (all plans done)
-Status: Phase Complete — ready for Phase 2
-Last activity: 2026-02-24 — Plan 04 complete: .lean() on all read-only GET endpoints (47 occurrences)
+Phase: 2 of 4 (PDF Import + Mobile Layout) — IN PROGRESS
+Plan: 1 of 3 in current phase (plan 01 done)
+Status: In Progress
+Last activity: 2026-02-24 — Plan 02-01 complete: Events.js mobile layout fix (pb:10 + responsive header)
 
-Progress: [██████░░░░] 35%
+Progress: [███████░░░] 40%
 
 ## Performance Metrics
 
@@ -28,9 +28,10 @@ Progress: [██████░░░░] 35%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-backend-stability | 4 | ~18 min | ~5 min |
+| 02-pdf-import-mobile-layout | 1 | ~3 min | ~3 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-04 (7 min), 01-02 (1 min), 01-03 (2 min), 01-01 (8 min)
+- Last 5 plans: 02-01 (3 min), 01-04 (7 min), 01-02 (1 min), 01-03 (2 min), 01-01 (8 min)
 - Trend: stable
 
 *Updated after each plan completion*
@@ -42,6 +43,8 @@ Progress: [██████░░░░] 35%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
+- [02-01]: flexDirection responsive breakpoint (xs: column, sm: row) keeps both header buttons visible on all screen sizes without hiding behind a menu
+- [02-01]: pb: 10 pattern confirmed as mandatory on all coach page root Box containers for BottomNavigation clearance
 - [Roadmap]: PDF fix approach is open — remote commits improved pdf-parse patterns (whole-PDF search, multi-line row support, debug logging); if fix proves insufficient, pdfjs-dist@4.10.38 remains the recommended replacement (coordinate-aware, pure JS)
 - [Roadmap]: Car pool data as embedded Event.carPool sub-document — scoped to event, no standalone meaning
 - [Roadmap]: TeamFund as separate collection (not Team sub-doc) — prevents document growth on every team list query
@@ -68,5 +71,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 01-04-PLAN.md — Phase 01 complete
+Stopped at: Completed 02-01-PLAN.md — Events.js mobile layout fix
 Resume file: None

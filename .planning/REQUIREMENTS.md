@@ -19,7 +19,7 @@
 
 ### Mobile Layout
 
-- [ ] **LAYOUT-01**: Coach event page displays correctly on mobile — import PDF button no longer causes layout overflow or navigation overlap
+- [x] **LAYOUT-01**: Coach event page displays correctly on mobile — import PDF button no longer causes layout overflow or navigation overlap
 
 ### Car Pool Organizer
 
@@ -94,7 +94,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PERF-05 | Phase 1 | Complete |
 | PERF-06 | Phase 1 | Complete |
 | PERF-07 | Phase 1 | Complete |
-| LAYOUT-01 | Phase 2 | Pending |
+| LAYOUT-01 | Phase 2 | Complete |
 | CARPOOL-01 | Phase 3 | Pending |
 | CARPOOL-02 | Phase 3 | Pending |
 | CARPOOL-03 | Phase 3 | Pending |
