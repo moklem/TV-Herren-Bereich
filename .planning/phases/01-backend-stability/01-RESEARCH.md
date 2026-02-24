@@ -345,7 +345,7 @@ Note: The user-decided format uses lowercase `"ok"` (not `"OK"`). The current ha
 
 **How to avoid:** Add size check in `handleFileChange` before the upload is even attempted, using the same `MAX_UPLOAD_SIZE` constant (or its numeric equivalent on the client side since the client can't import from the server). Show the same German error message.
 
-**Current client code (ImportMatchesPDF.js lines 158-166):**
+**Current client code (ImportMatchesPDF.js lines ~178-190, shifted by remote commits adding coach filtering logic above):**
 ```javascript
 const handleFileChange = (event) => {
   const file = event.target.files[0];

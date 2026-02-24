@@ -42,7 +42,7 @@ Progress: [░░░░░░░░░░] 0%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- [Roadmap]: Replace pdf-parse with pdfjs-dist@4.10.38 — coordinate-aware extraction, pure JS, no Python sidecar
+- [Roadmap]: PDF fix approach is open — remote commits improved pdf-parse patterns (whole-PDF search, multi-line row support, debug logging); if fix proves insufficient, pdfjs-dist@4.10.38 remains the recommended replacement (coordinate-aware, pure JS)
 - [Roadmap]: Car pool data as embedded Event.carPool sub-document — scoped to event, no standalone meaning
 - [Roadmap]: TeamFund as separate collection (not Team sub-doc) — prevents document growth on every team list query
 - [Roadmap]: Store fine amounts as integer cents — avoids float precision errors
@@ -55,7 +55,7 @@ None yet.
 ### Blockers/Concerns
 
 - [Pre-Phase 1]: Confirm which notification scheduler (`startNotificationScheduler` vs queue) is safe to remove — requires reading current `server.js`
-- [Pre-Phase 2]: Have 2-3 real volleyball federation PDFs available before marking Phase 2 complete — pdfjs-dist behavior on actual federation PDFs is unverified
+- [Pre-Phase 2]: Test improved pdf-parse parsing against 2-3 real volleyball federation PDFs — the fix searches entire PDF and handles multi-line rows but is unverified; debug logging in eventRoutes.js + ImportMatchesPDF.js must be removed before release
 - [Pre-Phase 5 / v2]: Render.com Starter upgrade ($7/month) decision needed before App Store review — free tier cold starts risk reviewer rejection
 
 ## Session Continuity

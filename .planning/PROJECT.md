@@ -23,7 +23,7 @@ Coaches and players stay coordinated — from event scheduling and attendance to
 - ✓ Training pools with auto-invite logic — existing
 - ✓ Email service integration (Brevo/Gmail) — existing
 - ✓ PWA with service worker and offline support (Workbox) — existing
-- ✓ PDF import for match schedules (broken, using pdf-parse) — existing (broken)
+- ✓ PDF import for match schedules (pdf-parse, parsing fix in progress) — existing (partially broken)
 - ✓ Voting / deadline system — existing
 - ✓ German timezone handling throughout — existing
 - ✓ Mobile-first layout with coach and player navigation — existing
@@ -34,7 +34,7 @@ Coaches and players stay coordinated — from event scheduling and attendance to
 
 - [ ] Backend memory optimization — identify and fix routes causing memory spikes on Render.com free tier
 - [ ] Reduce unnecessary loading — eliminate redundant API calls and over-fetching on key pages
-- [ ] Fix PDF schedule import — replace pdf-parse with docling for accurate schedule extraction
+- [ ] Fix PDF schedule import — pdf-parse patterns improved (whole-PDF search, multi-line pattern); debug logging still present; needs verification against real federation PDFs and cleanup
 - [ ] Fix coach event page mobile layout — import PDF button breaks mobile layout
 - [ ] Car pool organizer at match events — players self-register as driver (with seats) or passenger; coach finalizes assignments
 - [ ] Team fund / punishment catalog — coach maintains a catalog of fines per team; players see their own balance
@@ -54,7 +54,7 @@ Coaches and players stay coordinated — from event scheduling and attendance to
 - Backend: Node.js 18 / Express 4 / Mongoose 7 / MongoDB Atlas
 - Frontend: React 18 / MUI 5 / React Query 5 / Workbox PWA
 - UI language is German throughout
-- PDF import currently uses `pdf-parse` which fails on volleyball federation PDFs — docling is the planned replacement
+- PDF import uses `pdf-parse` — an in-progress fix improves parsing by searching the entire PDF and handling multi-line row formats, but debug logging is still present and the fix is unverified; pdfjs-dist/docling replacement remains an option if the pdf-parse fix proves insufficient
 - No automated tests exist — changes are manually tested
 
 ## Constraints
@@ -69,10 +69,10 @@ Coaches and players stay coordinated — from event scheduling and attendance to
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Replace pdf-parse with docling | pdf-parse fails on federation PDFs; docling handles complex layouts | — Pending |
+| Fix PDF schedule parsing | pdf-parse patterns improved (whole-PDF search, multi-line support); if still insufficient, replace with pdfjs-dist | — In progress / unverified |
 | PWA packaging for App Store | Avoids full native rewrite; fastest path to stores | — Pending |
 | Car pool as part of Event model | Reuses existing invitation/attendance infrastructure | — Pending |
 | Team fund as new Team sub-document | Keeps fines scoped to each team, editable by coach | — Pending |
 
 ---
-*Last updated: 2026-02-23 after initialization*
+*Last updated: 2026-02-24 — PDF parsing context updated after remote commits*
