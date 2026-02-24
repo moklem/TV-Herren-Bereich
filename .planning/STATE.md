@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Coaches and players stay coordinated — from event scheduling and attendance to car pools and team finances — all in one mobile-first app.
-**Current focus:** Phase 1 — Backend Stability (COMPLETE)
+**Current focus:** Phase 2 — PDF Import + Mobile Layout (IN PROGRESS)
 
 ## Current Position
 
 Phase: 2 of 4 (PDF Import + Mobile Layout) — IN PROGRESS
-Plan: 1 of 3 in current phase (plan 01 done)
+Plan: 2 of 3 in current phase (plans 01 and 02 done)
 Status: In Progress
-Last activity: 2026-02-24 — Plan 02-01 complete: Events.js mobile layout fix (pb:10 + responsive header)
+Last activity: 2026-02-24 — Plan 02-02 complete: PDF import per-match selection + duplicate detection + debug log removal
 
-Progress: [███████░░░] 40%
+Progress: [████████░░] 45%
 
 ## Performance Metrics
 
@@ -28,10 +28,10 @@ Progress: [███████░░░] 40%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-backend-stability | 4 | ~18 min | ~5 min |
-| 02-pdf-import-mobile-layout | 1 | ~3 min | ~3 min |
+| 02-pdf-import-mobile-layout | 2 | ~15 min | ~7 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-01 (3 min), 01-04 (7 min), 01-02 (1 min), 01-03 (2 min), 01-01 (8 min)
+- Last 5 plans: 02-02 (12 min), 02-01 (3 min), 01-04 (7 min), 01-02 (1 min), 01-03 (2 min)
 - Trend: stable
 
 *Updated after each plan completion*
@@ -43,6 +43,9 @@ Progress: [███████░░░] 40%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
+- [02-02]: Re-trigger handleCreateEvents via useEffect watching duplicateAction (not callback) to avoid stale closure issues after dialog dismissal
+- [02-02]: Use EventContext.events for duplicate detection (already fetched by CoachLayout) — avoids extra network request
+- [02-02]: Compare both event.team?._id and event.teams array entries for duplicate check — handles legacy single-team vs multi-team event schema
 - [02-01]: flexDirection responsive breakpoint (xs: column, sm: row) keeps both header buttons visible on all screen sizes without hiding behind a menu
 - [02-01]: pb: 10 pattern confirmed as mandatory on all coach page root Box containers for BottomNavigation clearance
 - [Roadmap]: PDF fix approach is open — remote commits improved pdf-parse patterns (whole-PDF search, multi-line row support, debug logging); if fix proves insufficient, pdfjs-dist@4.10.38 remains the recommended replacement (coordinate-aware, pure JS)
@@ -65,11 +68,12 @@ None yet.
 ### Blockers/Concerns
 
 - [RESOLVED 01-01]: Notification scheduler question resolved — startNotificationScheduler removed, only notificationQueue remains
-- [Pre-Phase 2]: Test improved pdf-parse parsing against 2-3 real volleyball federation PDFs — the fix searches entire PDF and handles multi-line rows but is unverified; debug logging in eventRoutes.js + ImportMatchesPDF.js must be removed before release
+- [RESOLVED 02-02]: Debug logging removed from eventRoutes.js and ImportMatchesPDF.js
+- [Pre-Phase 3]: Test improved pdf-parse parsing against 2-3 real volleyball federation PDFs — the fix searches entire PDF and handles multi-line rows but is unverified
 - [Pre-Phase 5 / v2]: Render.com Starter upgrade ($7/month) decision needed before App Store review — free tier cold starts risk reviewer rejection
 
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 02-01-PLAN.md — Events.js mobile layout fix
+Stopped at: Completed 02-02-PLAN.md — PDF import per-match selection + duplicate detection + debug log removal
 Resume file: None
