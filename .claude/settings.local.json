@@ -27,7 +27,8 @@
       "Bash(move agent-suggestions.md unimportant )",
       "Bash(move start-app.sh unimportant )",
       "Bash(move seed-database.sh unimportant )",
-      "Bash(move test-level-system.js unimportant)"
+      "Bash(move test-level-system.js unimportant)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",

@@ -311,141 +311,55 @@ router.post('/parse-pdf', protect, coach, (req, res, next) => {
     const pdfData = await pdfParse(req.file.buffer);
     const text = pdfData.text;
 
-    // Search entire PDF for match data (not just Spielplan section)
-    // The PDF might have a table structure where columns are separated
-    const matches = [];
-    const lines = text.split('\n');
-
-    let matchedLines = 0;
-    let unmatchedLines = [];
-
-    // Extract hall information for later use
-    const halleMatch = text.match(/Halle[\s\S]*?(?=\n\s*1\.3\.|$)/);
-    const hallMap = {};
-
-    if (halleMatch) {
-      const halleText = halleMatch[0];
-      const halleLines = halleText.split('\n').filter(line => line.trim());
-
-      for (const line of halleLines) {
-        const hallMatch = line.match(/^([A-Za-z]+\d+)\s+(.+?)\s+(.+?)\s+(\d{5})\s+(.+)$/);
-        if (hallMatch) {
-          const [, code, name, address, plz, ort] = hallMatch;
-          hallMap[code] = {
-            name: name.trim(),
-            address: address.trim(),
-            plz: plz.trim(),
-            ort: ort.trim()
-          };
-        }
-      }
-    }
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-
-      // Skip empty lines and header lines
-      if (!line || line.includes('Team A') || line.includes('Datum') || line === 'Nr' || line === 'Zeit' || line === 'Ergebnis') {
-        continue;
-      }
-
-      // Try multiple patterns for different PDF formats
-      let match = null;
-      let nr, datum, zeit, teamA, teamB, extra;
-
-      // Pattern 1: Standard space-separated with -:-
-      // Example: "1 11.10.2025 14:00 TV Hersbruck TV Fürth 1860 III -:- Hers1"
-      const pattern1 = line.match(/^(\d+)\s+(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})\s+(.+?)\s+(.+?)\s+-:-\s*(.*)$/);
-      if (pattern1) {
-        [, nr, datum, zeit, teamA, teamB, extra] = pattern1;
-        match = true;
-      }
-
-      // Pattern 2: Just number, date, and time on same line (teams might be on next lines)
-      // This handles PDFs where each column is a separate line
-      if (!match && /^(\d+)\s+(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})$/.test(line)) {
-        const parts = line.match(/^(\d+)\s+(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})$/);
-        if (parts && i + 2 < lines.length) {
-          nr = parts[1];
-          datum = parts[2];
-          zeit = parts[3];
-          teamA = lines[i + 1].trim();
-          teamB = lines[i + 2].trim();
-          extra = lines[i + 3] ? lines[i + 3].trim() : '';
-
-          // Skip if these look like headers
-          if (teamA && teamB && teamA !== 'Team A' && teamB !== 'Team B' && teamA !== 'Ergebnis') {
-            match = true;
-            i += 2; // Skip the next 2 lines since we've used them
-          }
-        }
-      }
-
-      if (match) {
-        matchedLines++;
-
-        // Extract hall code from extra field or teamB
-        let halleCode = '';
-        let finalTeamB = teamB;
-
-        // Check if there's a hall code in the extra field or at the end of teamB
-        const combinedText = `${teamB} ${extra || ''}`.trim();
-        const parts = combinedText.split(/\s+/);
-
-        // Check if last part matches hall code pattern (letters + numbers)
-        if (parts.length > 1 && /^[A-Za-z]+\d+$/.test(parts[parts.length - 1])) {
-          halleCode = parts[parts.length - 1];
-          finalTeamB = parts.slice(0, -1).join(' ');
-        }
-
-        // Get location details from hall map
-        let location = '';
-        if (halleCode && hallMap[halleCode]) {
-          const hall = hallMap[halleCode];
-          location = `${hall.name}, ${hall.address}, ${hall.plz} ${hall.ort}`;
-        } else if (halleCode) {
-          location = halleCode;
-        }
-
-        matches.push({
-          nr: parseInt(nr),
-          datum,
-          zeit,
-          teamA: teamA.trim(),
-          teamB: finalTeamB.trim(),
-          halleCode,
-          location
-        });
-      } else {
-        // Log unmatched lines for debugging (skip header lines and short lines)
-        if (line.length > 5 && !line.includes('Spielplan') && line !== 'Nr' && !line.includes('Team')) {
-          unmatchedLines.push(line);
-        }
-      }
-    }
-
-    // Extract unique team names
-    const teams = new Set();
-    matches.forEach(match => {
-      teams.add(match.teamA);
-      teams.add(match.teamB);
+    // LLM-based match extraction via OpenRouter
+    const llmRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://inteam.onrender.com',
+        'X-Title': 'InTeam Volleyball'
+      },
+      body: JSON.stringify({
+        model: 'nvidia/nemotron-nano-12b-v2-vl:free',
+        messages: [{
+          role: 'user',
+          content: `Extract all volleyball match entries from this German schedule PDF text. Return ONLY a valid JSON array with no other text or markdown. Each element must have: {"nr": number, "datum": "DD.MM.YYYY", "zeit": "HH:MM", "teamA": "string", "teamB": "string", "location": "string"}\n\nPDF Text:\n${text}`
+        }],
+        temperature: 0.1
+      })
     });
 
-    res.json({
-      matches,
-      teams: Array.from(teams).sort(),
-      totalMatches: matches.length,
-      debug: {
-        pdfTextLength: text.length,
-        pdfTextPreview: text.substring(0, 1000),
-        fullPdfSample: text.substring(2000, 4000), // Middle section sample
-        totalLines: lines.length,
-        matchedLines,
-        unmatchedLinesSample: unmatchedLines.slice(0, 10),
-        firstFewLines: lines.slice(0, 30).map((l, i) => `${i}: ${l}`),
-        linesAround100: lines.slice(95, 115).map((l, i) => `${i + 95}: ${l}`)
-      }
-    });
+    if (!llmRes.ok) {
+      throw new Error(`OpenRouter API error: ${llmRes.status}`);
+    }
+
+    const llmData = await llmRes.json();
+    const rawContent = llmData.choices?.[0]?.message?.content || '[]';
+
+    // Extract JSON array — LLM may wrap output in markdown code fences
+    let matches = [];
+    const jsonMatch = rawContent.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      matches = JSON.parse(jsonMatch[0]);
+    }
+
+    // Normalize fields and filter out incomplete entries
+    matches = matches
+      .map(m => ({
+        nr: parseInt(m.nr) || 0,
+        datum: (m.datum || '').trim(),
+        zeit: (m.zeit || '').trim(),
+        teamA: (m.teamA || '').trim(),
+        teamB: (m.teamB || '').trim(),
+        halleCode: '',
+        location: (m.location || '').trim()
+      }))
+      .filter(m => m.datum && m.teamA && m.teamB);
+
+    const teams = [...new Set([...matches.map(m => m.teamA), ...matches.map(m => m.teamB)])].sort();
+
+    res.json({ matches, teams, totalMatches: matches.length });
 
   } catch (error) {
     console.error('PDF parsing error:', error);

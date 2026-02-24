@@ -417,13 +417,13 @@ const ImportMatchesPDF = () => {
         >
           <ArrowBack />
         </IconButton>
-        <Typography variant="h4" component="h1">
+        <Typography variant="h5" component="h1">
           Spielplan importieren (PDF)
         </Typography>
       </Box>
 
-      <Paper elevation={3} sx={{ p: 3 }}>
-        <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
+      <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 } }}>
+        <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
           {steps.map((label) => (
             <Step key={label}>
               <StepLabel>{label}</StepLabel>
@@ -481,6 +481,7 @@ const ImportMatchesPDF = () => {
                 onClick={handleUploadPDF}
                 disabled={!pdfFile || uploading}
                 startIcon={uploading ? <CircularProgress size={20} /> : <CloudUpload />}
+                sx={{ width: { xs: '100%', sm: 'auto' } }}
               >
                 {uploading ? 'Hochladen...' : 'PDF hochladen und analysieren'}
               </Button>
@@ -541,7 +542,7 @@ const ImportMatchesPDF = () => {
                 <Typography variant="subtitle1" gutterBottom>
                   Gefilterte Spieltage: {filteredMatches.length} ({selectedMatchIndices.length} ausgewählt)
                 </Typography>
-                <TableContainer component={Paper} variant="outlined" sx={{ mt: 2 }}>
+                <TableContainer component={Paper} variant="outlined" sx={{ mt: 2, overflowX: 'auto' }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow>

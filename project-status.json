@@ -2,7 +2,7 @@
   "metadata": {
     "projectName": "volleyball-app",
     "description": "Eine Progressive Web App zur Verwaltung von Volleyball-Teams und zur Integration von Jugendspielern",
-    "version": "1.9.4",
+    "version": "1.9.5",
     "type": "Progressive Web Application",
     "primaryLanguage": "JavaScript",
     "techStack": {
@@ -301,6 +301,17 @@
   ],
   "inProgressFeatures": [],
   "recentChanges": [
+    {
+      "timestamp": "2026-02-25T00:00:00.000Z",
+      "filesModified": [
+        "server/routes/eventRoutes.js",
+        "client/src/pages/coach/ImportMatchesPDF.js"
+      ],
+      "filesAdded": [],
+      "filesDeleted": [],
+      "summary": "Replace PDF regex parsing with LLM-based extraction via OpenRouter (nvidia/nemotron-nano-12b-v2-vl:free) and fix ImportMatchesPDF mobile layout",
+      "impact": "PDF import now works regardless of whitespace/column format variations; mobile layout fixes prevent Stepper overflow and make table/button responsive"
+    },
     {
       "timestamp": "2025-10-30T10:00:00.000Z",
       "filesModified": [
