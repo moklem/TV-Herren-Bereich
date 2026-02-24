@@ -59,6 +59,8 @@ import { AuthContext } from '../../context/AuthContext';
 import { EventContext } from '../../context/EventContext';
 import { TeamContext } from '../../context/TeamContext';
 
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024; // 10 MB — must match server constant
+
 const ImportMatchesPDF = () => {
   const navigate = useNavigate();
   const { user } = useContext(AuthContext);
@@ -177,12 +179,17 @@ const ImportMatchesPDF = () => {
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
-    if (file && file.type === 'application/pdf') {
-      setPdfFile(file);
-      setUploadError('');
-    } else {
+    if (!file) return;
+    if (file.type !== 'application/pdf') {
       setUploadError('Bitte wählen Sie eine gültige PDF-Datei aus');
+      return;
     }
+    if (file.size > MAX_UPLOAD_SIZE) {
+      setUploadError('Die Datei ist zu groß. Maximale Dateigröße: 10 MB.');
+      return;
+    }
+    setPdfFile(file);
+    setUploadError('');
   };
 
   const handleUploadPDF = async () => {
