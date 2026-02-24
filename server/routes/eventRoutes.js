@@ -282,12 +282,29 @@ router.post('/', protect, coach, async (req, res) => {
 });
 
 // Configure multer for memory storage
-const upload = multer({ storage: multer.memoryStorage() });
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024; // 10 MB
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_UPLOAD_SIZE }
+});
 
 // @route   POST /api/events/parse-pdf
 // @desc    Parse match schedule PDF and extract match data
 // @access  Private/Coach
-router.post('/parse-pdf', protect, coach, upload.single('pdf'), async (req, res) => {
+router.post('/parse-pdf', protect, coach, (req, res, next) => {
+  upload.single('pdf')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({
+          message: 'Die Datei ist zu groß. Maximale Dateigröße: 10 MB.'
+        });
+      }
+      return res.status(400).json({ message: 'Upload-Fehler: ' + err.message });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'Keine PDF-Datei hochgeladen' });
@@ -495,6 +512,7 @@ router.get('/', protect, async (req, res) => {
           select: 'name type'
         })
         .populate('trainingPoolAutoInvite.poolId', 'name type leagueLevel')
+        .select('-carPool')
         .sort({ startTime: 1 });
     } else {
       // For players (Spieler and Jugendspieler), get events where:
@@ -546,9 +564,10 @@ router.get('/', protect, async (req, res) => {
           select: 'name type'
         })
         .populate('trainingPoolAutoInvite.poolId', 'name type leagueLevel')
+        .select('-carPool')
         .sort({ startTime: 1 });
     }
-    
+
     res.json(events);
   } catch (error) {
     console.error(error);
