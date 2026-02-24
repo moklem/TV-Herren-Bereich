@@ -14,7 +14,7 @@
 - [ ] **PERF-03**: PDF upload protected with 10MB file size limit to prevent memory spikes
 - [ ] **PERF-04**: `NODE_OPTIONS=--max-old-space-size=256` configured on Render.com to cap V8 heap before OS OOM-kills the process
 - [ ] **PERF-05**: Duplicate notification scheduler removed — only persistent queue runs (legacy `startNotificationScheduler` removed from `server.js`)
-- [ ] **PERF-06**: Database indexes added for voting deadline and attendance tracking job queries (`votingDeadline`, `autoDeclineProcessed`, `startTime`)
+- [x] **PERF-06**: Database indexes added for voting deadline and attendance tracking job queries (`votingDeadline`, `autoDeclineProcessed`, `startTime`)
 - [ ] **PERF-07**: Event list endpoint excludes car pool sub-document from payload (`.select('-carPool')` prevents future payload bloat)
 
 ### Mobile Layout
@@ -92,7 +92,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PERF-03 | Phase 1 | Pending |
 | PERF-04 | Phase 1 | Pending |
 | PERF-05 | Phase 1 | Pending |
-| PERF-06 | Phase 1 | Pending |
+| PERF-06 | Phase 1 | Complete |
 | PERF-07 | Phase 1 | Pending |
 | LAYOUT-01 | Phase 2 | Pending |
 | CARPOOL-01 | Phase 3 | Pending |
