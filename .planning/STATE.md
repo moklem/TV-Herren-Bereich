@@ -10,27 +10,27 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 ## Current Position
 
 Phase: 1 of 4 (Backend Stability)
-Plan: 3 of 4 in current phase
+Plan: 4 of 4 in current phase (01-04 remaining)
 Status: In Progress
-Last activity: 2026-02-24 — Plan 03 complete: 10MB upload limit + carPool exclusion
+Last activity: 2026-02-24 — Plan 01 complete: V8 heap cap + memory health endpoint + legacy scheduler removed
 
-Progress: [███░░░░░░░] 18%
+Progress: [████░░░░░░] 22%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: ~1.5 min
-- Total execution time: ~3 min
+- Total plans completed: 3
+- Average duration: ~4 min
+- Total execution time: ~11 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-backend-stability | 2 | ~3 min | ~1.5 min |
+| 01-backend-stability | 3 | ~11 min | ~4 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-02 (1 min), 01-03 (2 min)
+- Last 5 plans: 01-02 (1 min), 01-03 (2 min), 01-01 (8 min)
 - Trend: -
 
 *Updated after each plan completion*
@@ -50,6 +50,7 @@ Recent decisions affecting current work:
 - [Phase 01-backend-stability]: Indexes added as EventSchema.index() declarations (not inline schema field options) for clarity and grouping
 - [01-03]: Used inline multer callback (not global error middleware) to keep 413 logic co-located with the parse-pdf route
 - [01-03]: .select('-carPool') added proactively before Phase 3 adds carPool field to prevent payload bloat on event list loads
+- [01-01]: Health status field normalized to lowercase 'ok'; V8 startup log inside server.listen callback; notificationScheduler.js deleted entirely (not commented out)
 
 ### Pending Todos
 
@@ -57,12 +58,12 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Pre-Phase 1]: Confirm which notification scheduler (`startNotificationScheduler` vs queue) is safe to remove — requires reading current `server.js`
+- [RESOLVED 01-01]: Notification scheduler question resolved — startNotificationScheduler removed, only notificationQueue remains
 - [Pre-Phase 2]: Test improved pdf-parse parsing against 2-3 real volleyball federation PDFs — the fix searches entire PDF and handles multi-line rows but is unverified; debug logging in eventRoutes.js + ImportMatchesPDF.js must be removed before release
 - [Pre-Phase 5 / v2]: Render.com Starter upgrade ($7/month) decision needed before App Store review — free tier cold starts risk reviewer rejection
 
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 01-03-PLAN.md
+Stopped at: Completed 01-01-PLAN.md
 Resume file: None
