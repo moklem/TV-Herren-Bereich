@@ -9,7 +9,7 @@
 
 ### Backend Performance
 
-- [ ] **PERF-01**: Backend handles concurrent requests without crashing — `.lean()` added to all read-only Mongoose queries to eliminate document hydration overhead
+- [x] **PERF-01**: Backend handles concurrent requests without crashing — `.lean()` added to all read-only Mongoose queries to eliminate document hydration overhead
 - [x] **PERF-02**: Memory usage visible via `/api/health` endpoint returning `process.memoryUsage()` data
 - [x] **PERF-03**: PDF upload protected with 10MB file size limit to prevent memory spikes
 - [x] **PERF-04**: `NODE_OPTIONS=--max-old-space-size=256` configured on Render.com to cap V8 heap before OS OOM-kills the process
@@ -87,7 +87,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PERF-01 | Phase 1 | Pending |
+| PERF-01 | Phase 1 | Complete |
 | PERF-02 | Phase 1 | Complete |
 | PERF-03 | Phase 1 | Complete |
 | PERF-04 | Phase 1 | Complete |

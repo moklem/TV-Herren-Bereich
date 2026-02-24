@@ -5,33 +5,33 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Coaches and players stay coordinated — from event scheduling and attendance to car pools and team finances — all in one mobile-first app.
-**Current focus:** Phase 1 — Backend Stability
+**Current focus:** Phase 1 — Backend Stability (COMPLETE)
 
 ## Current Position
 
-Phase: 1 of 4 (Backend Stability)
-Plan: 4 of 4 in current phase (01-04 remaining)
-Status: In Progress
-Last activity: 2026-02-24 — Plan 01 complete: V8 heap cap + memory health endpoint + legacy scheduler removed
+Phase: 1 of 4 (Backend Stability) — COMPLETE
+Plan: 4 of 4 in current phase (all plans done)
+Status: Phase Complete — ready for Phase 2
+Last activity: 2026-02-24 — Plan 04 complete: .lean() on all read-only GET endpoints (47 occurrences)
 
-Progress: [████░░░░░░] 22%
+Progress: [██████░░░░] 35%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: ~4 min
-- Total execution time: ~11 min
+- Total plans completed: 4
+- Average duration: ~5 min
+- Total execution time: ~18 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-backend-stability | 3 | ~11 min | ~4 min |
+| 01-backend-stability | 4 | ~18 min | ~5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-02 (1 min), 01-03 (2 min), 01-01 (8 min)
-- Trend: -
+- Last 5 plans: 01-04 (7 min), 01-02 (1 min), 01-03 (2 min), 01-01 (8 min)
+- Trend: stable
 
 *Updated after each plan completion*
 
@@ -51,6 +51,9 @@ Recent decisions affecting current work:
 - [01-03]: Used inline multer callback (not global error middleware) to keep 413 logic co-located with the parse-pdf route
 - [01-03]: .select('-carPool') added proactively before Phase 3 adds carPool field to prevent payload bloat on event list loads
 - [01-01]: Health status field normalized to lowercase 'ok'; V8 startup log inside server.listen callback; notificationScheduler.js deleted entirely (not commented out)
+- [01-04]: notificationRoutes.js queries live in notificationController.js — added .lean() to controller instead of route file
+- [01-04]: Fixed Team.findById(populatedObj) to Team.findById(obj._id||obj) after adding .lean() — leaned populated fields are plain objects, not ObjectIds
+- [01-04]: Skipped .lean() on Team.findById() used with .includes(mongoose_objectid) for auth — ObjectId reference comparison breaks with plain objects; .some(p => p.toString() ===) is safe
 
 ### Pending Todos
 
@@ -65,5 +68,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 01-01-PLAN.md
+Stopped at: Completed 01-04-PLAN.md — Phase 01 complete
 Resume file: None

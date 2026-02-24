@@ -12,7 +12,7 @@ This milestone adds four capabilities to an already-deployed production app: fir
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Backend Stability** - Eliminate memory crashes and reduce redundant load on Render.com free tier
+- [x] **Phase 1: Backend Stability** - Eliminate memory crashes and reduce redundant load on Render.com free tier (completed 2026-02-24)
 - [ ] **Phase 2: PDF Import + Mobile Layout** - Restore the broken schedule PDF import and fix the coach event page mobile layout
 - [ ] **Phase 3: Car Pool Organizer** - Let players self-register as driver or passenger; coach finalizes assignments with push notification
 - [ ] **Phase 4: Team Fund** - Per-team fine catalog with coach violation logging and player self-service balance view
@@ -76,7 +76,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Backend Stability | 3/4 | In Progress|  |
+| 1. Backend Stability | 4/4 | Complete   | 2026-02-24 |
 | 2. PDF Import + Mobile Layout | 0/? | Not started | - |
 | 3. Car Pool Organizer | 0/? | Not started | - |
 | 4. Team Fund | 0/? | Not started | - |
