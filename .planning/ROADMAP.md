@@ -44,7 +44,12 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Coach event page renders without layout overflow or navigation overlap on a mobile viewport
   2. The import PDF button on the coach event page is accessible and usable on mobile screens
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Events.js mobile layout fix: pb: 10 on root Box + responsive header button row
+- [ ] 02-02-PLAN.md — PDF import flow: per-match selection checkboxes, duplicate detection dialog, debug log removal
+- [ ] 02-03-PLAN.md — Human verification checkpoint: mobile layout and PDF import flow
 
 ### Phase 3: Car Pool Organizer
 **Goal**: Attending players can self-register as driver or passenger for match events; coach can assign passengers to drivers and finalize; every player sees their own assignment
