@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
 const morgan = require('morgan');
+const v8 = require('v8');
 
 // Import routes
 const userRoutes = require('./routes/userRoutes');
@@ -19,7 +20,6 @@ const trainingPoolRoutes = require('./routes/trainingPoolRoutes');
 
 // Import web-push configuration
 const { configureWebPush } = require('./utils/webpush');
-const { startNotificationScheduler } = require('./utils/notificationScheduler');
 const { startNotificationQueue } = require('./utils/notificationQueue');
 const { startVotingDeadlineJob } = require('./utils/votingDeadlineJob');
 const { startAttendanceTrackingJob } = require('./utils/attendanceTrackingJob');
@@ -67,11 +67,14 @@ app.get('/', (req, res) => {
 
 // Health check endpoint for Render
 app.get('/api/health', (req, res) => {
+  const mem = process.memoryUsage();
   res.status(200).json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
-    version: process.env.npm_package_version || '1.0.0'
+    status: 'ok',
+    memory: {
+      heapUsed: mem.heapUsed,
+      heapTotal: mem.heapTotal,
+      rss: mem.rss
+    }
   });
 });
 
@@ -319,10 +322,10 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/volleyball-
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  
+  console.log(`[Startup] V8 heap size limit: ${Math.round(v8.getHeapStatistics().heap_size_limit / 1024 / 1024)} MB`);
+
   // Start notification systems after server is running
-  startNotificationScheduler(); // Keep for backward compatibility
-  startNotificationQueue(); // New persistent queue system
+  startNotificationQueue(); // Persistent queue system (legacy scheduler removed)
   startVotingDeadlineJob(); // Start voting deadline checking
   startAttendanceTrackingJob(); // Start attendance tracking after 7 days without feedback
 });
