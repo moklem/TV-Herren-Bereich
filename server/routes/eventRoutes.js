@@ -513,7 +513,8 @@ router.get('/', protect, async (req, res) => {
         })
         .populate('trainingPoolAutoInvite.poolId', 'name type leagueLevel')
         .select('-carPool')
-        .sort({ startTime: 1 });
+        .sort({ startTime: 1 })
+        .lean();
     } else {
       // For players (Spieler and Jugendspieler), get events where:
       // 1. They are explicitly invited
@@ -523,9 +524,9 @@ router.get('/', protect, async (req, res) => {
       // 5. NEW: The event belongs to one of their teams
       
       // First, get all teams the player belongs to
-      const playerTeams = await Team.find({ 
-        players: req.user._id 
-      }).select('_id');
+      const playerTeams = await Team.find({
+        players: req.user._id
+      }).select('_id').lean();
       
       const teamIds = playerTeams.map(team => team._id);
       
@@ -565,7 +566,8 @@ router.get('/', protect, async (req, res) => {
         })
         .populate('trainingPoolAutoInvite.poolId', 'name type leagueLevel')
         .select('-carPool')
-        .sort({ startTime: 1 });
+        .sort({ startTime: 1 })
+        .lean();
     }
 
     res.json(events);
@@ -603,11 +605,13 @@ router.get('/:id', protect, async (req, res) => {
       .populate({
         path: 'guestPlayers.fromTeam',
         select: 'name type'
-      });
-    
+      })
+      .lean();
+
     if (event) {
       // Check if user is authorized to view this event
-      const team = await Team.findById(event.team);
+      const teamId = event.team?._id || event.team;
+      const team = await Team.findById(teamId);
       
       // Allow access if:
       // 1. User is a coach
@@ -1300,16 +1304,16 @@ router.post('/:id/invitedPlayers', protect, coach, async (req, res) => {
 // @access  Private
 router.get('/:id/can-edit', protect, async (req, res) => {
   try {
-    const event = await Event.findById(req.params.id).populate('team');
-    
+    const event = await Event.findById(req.params.id).populate('team').lean();
+
     if (!event) {
       return res.status(404).json({ message: 'Event not found' });
     }
-    
+
     // Check if user is a coach AND part of the event's team
-    const canEdit = req.user.role === 'Trainer' && 
+    const canEdit = req.user.role === 'Trainer' &&
                     event.team.coaches.some(coach => coach.toString() === req.user._id.toString());
-    
+
     res.json({ canEdit });
   } catch (error) {
     console.error(error);
@@ -1493,12 +1497,12 @@ router.post('/:id/guest/unsure', protect, async (req, res) => {
 // @access  Private/Coach
 router.get('/:id/feedback/check', protect, coach, async (req, res) => {
   try {
-    const event = await Event.findById(req.params.id);
-    
+    const event = await Event.findById(req.params.id).lean();
+
     if (!event) {
       return res.status(404).json({ message: 'Event not found' });
     }
-    
+
     // Check if this coach already provided feedback
     const alreadyProvided = event.quickFeedback && event.quickFeedback.some(
       feedback => feedback.coach.toString() === req.user._id.toString() && feedback.provided === true
