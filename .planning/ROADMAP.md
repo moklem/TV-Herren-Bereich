@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 - [ ] 01-01-PLAN.md — Server config: /api/health memory data, NODE_OPTIONS 512MB cap, legacy scheduler removed
 - [ ] 01-02-PLAN.md — Event model: compound indexes for background job queries and list sort
-- [ ] 01-03-PLAN.md — PDF upload 10MB limit (server + client) and proactive carPool payload exclusion
+- [x] 01-03-PLAN.md — PDF upload 10MB limit (server + client) and proactive carPool payload exclusion
 - [ ] 01-04-PLAN.md — .lean() on all read-only Mongoose queries across all route files
 
 ### Phase 2: PDF Import + Mobile Layout
@@ -76,7 +76,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Backend Stability | 1/4 | In Progress|  |
+| 1. Backend Stability | 2/4 | In Progress|  |
 | 2. PDF Import + Mobile Layout | 0/? | Not started | - |
 | 3. Car Pool Organizer | 0/? | Not started | - |
 | 4. Team Fund | 0/? | Not started | - |

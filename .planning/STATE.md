@@ -10,27 +10,27 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 ## Current Position
 
 Phase: 1 of 4 (Backend Stability)
-Plan: 2 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: In Progress
-Last activity: 2026-02-24 — Plan 02 complete: Event model indexes added
+Last activity: 2026-02-24 — Plan 03 complete: 10MB upload limit + carPool exclusion
 
-Progress: [██░░░░░░░░] 12%
+Progress: [███░░░░░░░] 18%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 1 min
-- Total execution time: 1 min
+- Total plans completed: 2
+- Average duration: ~1.5 min
+- Total execution time: ~3 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-backend-stability | 1 | 1 min | 1 min |
+| 01-backend-stability | 2 | ~3 min | ~1.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-02 (1 min)
+- Last 5 plans: 01-02 (1 min), 01-03 (2 min)
 - Trend: -
 
 *Updated after each plan completion*
@@ -48,6 +48,8 @@ Recent decisions affecting current work:
 - [Roadmap]: Store fine amounts as integer cents — avoids float precision errors
 - [Roadmap]: App Store packaging (STORE-01 through STORE-03) deferred to v2 — not in v1 scope
 - [Phase 01-backend-stability]: Indexes added as EventSchema.index() declarations (not inline schema field options) for clarity and grouping
+- [01-03]: Used inline multer callback (not global error middleware) to keep 413 logic co-located with the parse-pdf route
+- [01-03]: .select('-carPool') added proactively before Phase 3 adds carPool field to prevent payload bloat on event list loads
 
 ### Pending Todos
 
@@ -62,5 +64,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 01-backend-stability-02-PLAN.md
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None
