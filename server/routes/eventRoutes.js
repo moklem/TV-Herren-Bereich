@@ -334,7 +334,7 @@ router.post('/parse-pdf', protect, coach, (req, res, next) => {
         'X-Title': 'InTeam Volleyball'
       },
       body: JSON.stringify({
-        model: 'nvidia/nemotron-nano-12b-v2-vl:free',
+        model: 'stepfun/step-3.5-flash:free',
         messages: [{
           role: 'user',
           content: `Extract all volleyball match entries from this German schedule PDF text. Return ONLY a valid JSON array with no other text or markdown. Each element must have: {"nr": number, "datum": "DD.MM.YYYY", "zeit": "HH:MM", "teamA": "string", "teamB": "string", "location": "string"}\n\nPDF Text:\n${text}`
