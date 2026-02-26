@@ -1902,4 +1902,40 @@ router.post('/:id/carpool/reopen', protect, coach, async (req, res) => {
   }
 });
 
+// @desc    Coach overrides a driver's note
+// @route   PATCH /api/events/:id/carpool/drivers/:driverId/note
+// @access  Private (coach)
+router.patch('/:id/carpool/drivers/:driverId/note', protect, coach, async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ message: 'Event not found' });
+    if (event.type !== 'Game') return res.status(400).json({ message: 'Fahrgemeinschaft ist nur für Spiele verfügbar' });
+
+    const { note } = req.body;
+    if (typeof note !== 'string') {
+      return res.status(400).json({ message: 'Notiz muss ein Text sein' });
+    }
+
+    const driver = event.carPool.drivers.find(
+      d => d.player.toString() === req.params.driverId
+    );
+    if (!driver) {
+      return res.status(404).json({ message: 'Fahrer nicht gefunden' });
+    }
+
+    driver.note = note.trim();
+    await event.save();
+
+    const updated = await Event.findById(event._id)
+      .populate('carPool.drivers.player', 'name')
+      .populate({ path: 'carPool.drivers.passengers', select: 'name' })
+      .populate('carPool.passengers', 'name')
+      .lean();
+    res.json(updated.carPool);
+  } catch (error) {
+    console.error('Error updating driver note:', error);
+    res.status(500).json({ message: 'Serverfehler beim Aktualisieren der Notiz' });
+  }
+});
+
 module.exports = router;
