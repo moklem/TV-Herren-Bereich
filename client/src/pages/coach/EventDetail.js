@@ -112,6 +112,14 @@ const EventDetail = () => {
     hoursBeforeEvent: 24
   });
 
+  // Car pool state
+  const [carpoolAssignOpen, setCarpoolAssignOpen] = useState(false);
+  const [carpoolAssignPassengerId, setCarpoolAssignPassengerId] = useState(null);
+  const [carpoolFinalizeWarningOpen, setCarpoolFinalizeWarningOpen] = useState(false);
+  const [carpoolLoading, setCarpoolLoading] = useState(false);
+  const [carpoolError, setCarpoolError] = useState('');
+  const [carpoolNoteEdits, setCarpoolNoteEdits] = useState({});
+
 useEffect(() => {
   let mounted = true;
   
@@ -455,12 +463,104 @@ const handleInvitePlayer = async (playerId) => {
   try {
     const updatedEvent = await invitePlayer(id, playerId);
     setEvent(updatedEvent);
-    
+
     // Remove from uninvited lists
     setUninvitedPlayers(prev => prev.filter(p => p._id !== playerId));
     setUninvitedTeamPlayers(prev => prev.filter(p => p._id !== playerId));
   } catch (error) {
     console.error('Error inviting player:', error);
+  }
+};
+
+const handleCarpoolAssign = async (passengerId, driverId) => {
+  setCarpoolLoading(true);
+  setCarpoolError('');
+  try {
+    const token = localStorage.getItem('token');
+    await axios.patch(
+      `${process.env.REACT_APP_API_URL}/events/${id}/carpool/assign`,
+      { passengerId, driverId },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    setCarpoolAssignOpen(false);
+    setCarpoolAssignPassengerId(null);
+    await fetchEvent(id);
+  } catch (err) {
+    setCarpoolError(err.response?.data?.message || 'Fehler beim Zuweisen');
+  } finally {
+    setCarpoolLoading(false);
+  }
+};
+
+const handleCarpoolFinalize = async () => {
+  const carPool = event?.carPool;
+  if (!carPool) return;
+
+  // Count unassigned passengers
+  const assignedPassengerIds = new Set(
+    (carPool.drivers || []).flatMap(d =>
+      (d.passengers || []).map(p => (p?._id || p)?.toString())
+    )
+  );
+  const unassignedCount = (carPool.passengers || []).filter(
+    p => !assignedPassengerIds.has((p?._id || p)?.toString())
+  ).length;
+
+  if (unassignedCount > 0 && !carpoolFinalizeWarningOpen) {
+    setCarpoolFinalizeWarningOpen(true);
+    return;
+  }
+
+  setCarpoolFinalizeWarningOpen(false);
+  setCarpoolLoading(true);
+  setCarpoolError('');
+  try {
+    const token = localStorage.getItem('token');
+    await axios.post(
+      `${process.env.REACT_APP_API_URL}/events/${id}/carpool/finalize`,
+      {},
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    await fetchEvent(id);
+  } catch (err) {
+    setCarpoolError(err.response?.data?.message || 'Fehler beim Abschließen der Fahrgemeinschaft');
+  } finally {
+    setCarpoolLoading(false);
+  }
+};
+
+const handleCarpoolReopen = async () => {
+  setCarpoolLoading(true);
+  setCarpoolError('');
+  try {
+    const token = localStorage.getItem('token');
+    await axios.post(
+      `${process.env.REACT_APP_API_URL}/events/${id}/carpool/reopen`,
+      {},
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    await fetchEvent(id);
+  } catch (err) {
+    setCarpoolError(err.response?.data?.message || 'Fehler beim Öffnen der Fahrgemeinschaft');
+  } finally {
+    setCarpoolLoading(false);
+  }
+};
+
+const handleCarpoolNoteSave = async (driverId) => {
+  const note = carpoolNoteEdits[driverId] ?? '';
+  try {
+    const token = localStorage.getItem('token');
+    await axios.patch(
+      `${process.env.REACT_APP_API_URL}/events/${id}/carpool/drivers/${driverId}/note`,
+      { note },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    // Remove the local draft so the card reverts to displaying the server value
+    setCarpoolNoteEdits(prev => { const next = { ...prev }; delete next[driverId]; return next; });
+    await fetchEvent(id);
+  } catch (err) {
+    setCarpoolError(err.response?.data?.message || 'Fehler beim Speichern der Notiz');
   }
 };
 
