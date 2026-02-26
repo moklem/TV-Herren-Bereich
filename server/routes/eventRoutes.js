@@ -519,6 +519,12 @@ router.get('/:id', protect, async (req, res) => {
         path: 'guestPlayers.fromTeam',
         select: 'name type'
       })
+      .populate('carPool.drivers.player', 'name')
+      .populate({
+        path: 'carPool.drivers.passengers',
+        select: 'name'
+      })
+      .populate('carPool.passengers', 'name')
       .lean();
 
     if (event) {
