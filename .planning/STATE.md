@@ -1,3 +1,16 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
+last_updated: "2026-02-26T11:10:01.884Z"
+progress:
+  total_phases: 3
+  completed_phases: 1
+  total_plans: 13
+  completed_plans: 8
+---
+
 # Project State
 
 ## Project Reference
@@ -10,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 ## Current Position
 
 Phase: 3 of 4 (Car Pool Organizer) — IN PROGRESS
-Plan: 1 of N in current phase (plan 01 done)
+Plan: 2 of N in current phase (plans 01-02 done)
 Status: In Progress
-Last activity: 2026-02-26 — Plan 03-01 complete: Event schema carPool sub-document + GET /:id population
+Last activity: 2026-02-26 — Plan 03-02 complete: Backend Carpool Routes (7 routes on eventRoutes.js)
 
 Progress: [█████████░] 55%
 
@@ -29,13 +42,14 @@ Progress: [█████████░] 55%
 |-------|-------|-------|----------|
 | 01-backend-stability | 4 | ~18 min | ~5 min |
 | 02-pdf-import-mobile-layout | 2 | ~15 min | ~7 min |
-| 03-car-pool-organizer | 1 | ~2 min | ~2 min |
+| 03-car-pool-organizer | 2 | ~4 min | ~2 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-01 (2 min), 02-02 (12 min), 02-01 (3 min), 01-04 (7 min), 01-02 (1 min)
+- Last 5 plans: 03-02 (2 min), 03-01 (2 min), 02-02 (12 min), 02-01 (3 min), 01-04 (7 min)
 - Trend: stable
 
 *Updated after each plan completion*
+| Phase 03-car-pool-organizer P02 | 2 | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -63,6 +77,9 @@ Recent decisions affecting current work:
 - [01-04]: notificationRoutes.js queries live in notificationController.js — added .lean() to controller instead of route file
 - [01-04]: Fixed Team.findById(populatedObj) to Team.findById(obj._id||obj) after adding .lean() — leaned populated fields are plain objects, not ObjectIds
 - [01-04]: Skipped .lean() on Team.findById() used with .includes(mongoose_objectid) for auth — ObjectId reference comparison breaks with plain objects; .some(p => p.toString() ===) is safe
+- [Phase 03-02]: autoAssignPassenger uses first-fit by most remaining capacity — simple and predictable for small team sizes
+- [Phase 03-02]: Coach assign route omits finalized check — coach can assign freely anytime before finalization
+- [Phase 03-02]: Finalize notification loop uses serial for-of without .lean() during population — ensures ObjectId comparisons work for nested passenger matching
 
 ### Pending Todos
 
@@ -78,5 +95,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 03-01-PLAN.md — Event schema carPool sub-document + GET /:id population
+Stopped at: Completed 03-02-PLAN.md — Backend Carpool Routes (7 routes)
 Resume file: None

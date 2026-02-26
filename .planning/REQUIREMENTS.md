@@ -23,16 +23,16 @@
 
 ### Car Pool Organizer
 
-- [ ] **CARPOOL-01**: Attending player can register as driver for a match event, specifying available seat count (1–9)
-- [ ] **CARPOOL-02**: Attending player can register as passenger requesting a ride
-- [ ] **CARPOOL-03**: Player can withdraw or update their car pool registration at any time before finalization
-- [ ] **CARPOOL-04**: Driver can optionally specify a meeting point and departure time
-- [ ] **CARPOOL-05**: Coach sees overview of all drivers (with seat counts), all passengers, and unassigned attending players
-- [ ] **CARPOOL-06**: Coach can manually assign passengers to specific drivers
-- [ ] **CARPOOL-07**: Coach can finalize car pool assignments — finalization is server-enforced (further player changes blocked after finalization)
-- [ ] **CARPOOL-08**: Players receive push notification when coach finalizes assignments
-- [ ] **CARPOOL-09**: Player sees their own assignment — if driver: their passengers; if passenger: their assigned driver, meeting point, departure time
-- [ ] **CARPOOL-10**: Car pool feature only available on match/game events (not training events)
+- [x] **CARPOOL-01**: Attending player can register as driver for a match event, specifying available seat count (1–9)
+- [x] **CARPOOL-02**: Attending player can register as passenger requesting a ride
+- [x] **CARPOOL-03**: Player can withdraw or update their car pool registration at any time before finalization
+- [x] **CARPOOL-04**: Driver can optionally specify a meeting point and departure time
+- [x] **CARPOOL-05**: Coach sees overview of all drivers (with seat counts), all passengers, and unassigned attending players
+- [x] **CARPOOL-06**: Coach can manually assign passengers to specific drivers
+- [x] **CARPOOL-07**: Coach can finalize car pool assignments — finalization is server-enforced (further player changes blocked after finalization)
+- [x] **CARPOOL-08**: Players receive push notification when coach finalizes assignments
+- [x] **CARPOOL-09**: Player sees their own assignment — if driver: their passengers; if passenger: their assigned driver, meeting point, departure time
+- [x] **CARPOOL-10**: Car pool feature only available on match/game events (not training events)
 
 ### Team Fund / Punishment Catalog
 
@@ -95,16 +95,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PERF-06 | Phase 1 | Complete |
 | PERF-07 | Phase 1 | Complete |
 | LAYOUT-01 | Phase 2 | Complete |
-| CARPOOL-01 | Phase 3 | Pending |
-| CARPOOL-02 | Phase 3 | Pending |
-| CARPOOL-03 | Phase 3 | Pending |
-| CARPOOL-04 | Phase 3 | Pending |
-| CARPOOL-05 | Phase 3 | Pending |
-| CARPOOL-06 | Phase 3 | Pending |
-| CARPOOL-07 | Phase 3 | Pending |
-| CARPOOL-08 | Phase 3 | Pending |
-| CARPOOL-09 | Phase 3 | Pending |
-| CARPOOL-10 | Phase 3 | Pending |
+| CARPOOL-01 | Phase 3 | Complete |
+| CARPOOL-02 | Phase 3 | Complete |
+| CARPOOL-03 | Phase 3 | Complete |
+| CARPOOL-04 | Phase 3 | Complete |
+| CARPOOL-05 | Phase 3 | Complete |
+| CARPOOL-06 | Phase 3 | Complete |
+| CARPOOL-07 | Phase 3 | Complete |
+| CARPOOL-08 | Phase 3 | Complete |
+| CARPOOL-09 | Phase 3 | Complete |
+| CARPOOL-10 | Phase 3 | Complete |
 | FUND-01 | Phase 4 | Pending |
 | FUND-02 | Phase 4 | Pending |
 | FUND-03 | Phase 4 | Pending |
