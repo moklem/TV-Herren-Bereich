@@ -73,7 +73,7 @@ Each task was committed atomically:
 1. **Task 1: Add carPool sub-document schemas to Event.js** - `f06241b` (feat)
 2. **Task 2: Add carPool population to GET /api/events/:id** - `ab42982` (feat)
 
-**Plan metadata:** _(docs commit follows)_
+**Plan metadata:** `88ec3d8` (docs: complete plan)
 
 ## Files Created/Modified
 - `server/models/Event.js` - Added carPoolDriverSchema, carPoolSchema, and carPool field to EventSchema
@@ -97,6 +97,15 @@ None - no external service configuration required.
 ## Next Phase Readiness
 - Data layer foundation is complete — all Phase 3 plans (02 through N) can build carPool API endpoints and UI on top of this schema
 - No blockers — schema validates correctly, existing events unaffected by empty default
+
+## Self-Check: PASSED
+
+- FOUND: `.planning/phases/03-car-pool-organizer/03-01-SUMMARY.md`
+- FOUND: commit `f06241b` (feat: carPool schema)
+- FOUND: commit `ab42982` (feat: carPool population)
+- FOUND: commit `88ec3d8` (docs: plan metadata)
+- FOUND: `server/models/Event.js` — carPool SubdocumentPath verified via `node -e`
+- FOUND: `server/routes/eventRoutes.js` — carPool populate present, `.select('-carPool')` count = 2
 
 ---
 *Phase: 03-car-pool-organizer*
