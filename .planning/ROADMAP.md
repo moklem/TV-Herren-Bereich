@@ -64,7 +64,7 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Event schema extension: carPool sub-document + GET /:id carPool population
+- [x] 03-01-PLAN.md — Event schema extension: carPool sub-document + GET /:id carPool population
 - [ ] 03-02-PLAN.md — Backend carpool routes: all 6 routes (register, withdraw, pick-driver, assign, finalize, reopen)
 - [ ] 03-03-PLAN.md — Player EventDetail inline carpool section (registration, withdraw, pick-driver, post-finalization view)
 - [ ] 03-04-PLAN.md — Coach EventDetail inline carpool section (two-column overview, assign, finalize, reopen)
@@ -90,5 +90,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Backend Stability | 4/4 | Complete   | 2026-02-24 |
 | 2. PDF Import + Mobile Layout | 2/3 | In Progress|  |
-| 3. Car Pool Organizer | 0/5 | Not started | - |
+| 3. Car Pool Organizer | 1/5 | In Progress | - |
 | 4. Team Fund | 0/? | Not started | - |

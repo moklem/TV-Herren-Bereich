@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Coaches and players stay coordinated — from event scheduling and attendance to car pools and team finances — all in one mobile-first app.
-**Current focus:** Phase 2 — PDF Import + Mobile Layout (IN PROGRESS)
+**Current focus:** Phase 3 — Car Pool Organizer (IN PROGRESS)
 
 ## Current Position
 
-Phase: 2 of 4 (PDF Import + Mobile Layout) — IN PROGRESS
-Plan: 2 of 3 in current phase (plans 01 and 02 done)
+Phase: 3 of 4 (Car Pool Organizer) — IN PROGRESS
+Plan: 1 of N in current phase (plan 01 done)
 Status: In Progress
-Last activity: 2026-02-24 — Plan 02-02 complete: PDF import per-match selection + duplicate detection + debug log removal
+Last activity: 2026-02-26 — Plan 03-01 complete: Event schema carPool sub-document + GET /:id population
 
-Progress: [████████░░] 45%
+Progress: [█████████░] 55%
 
 ## Performance Metrics
 
@@ -29,9 +29,10 @@ Progress: [████████░░] 45%
 |-------|-------|-------|----------|
 | 01-backend-stability | 4 | ~18 min | ~5 min |
 | 02-pdf-import-mobile-layout | 2 | ~15 min | ~7 min |
+| 03-car-pool-organizer | 1 | ~2 min | ~2 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-02 (12 min), 02-01 (3 min), 01-04 (7 min), 01-02 (1 min), 01-03 (2 min)
+- Last 5 plans: 03-01 (2 min), 02-02 (12 min), 02-01 (3 min), 01-04 (7 min), 01-02 (1 min)
 - Trend: stable
 
 *Updated after each plan completion*
@@ -56,6 +57,8 @@ Recent decisions affecting current work:
 - [Phase 01-backend-stability]: Indexes added as EventSchema.index() declarations (not inline schema field options) for clarity and grouping
 - [01-03]: Used inline multer callback (not global error middleware) to keep 413 logic co-located with the parse-pdf route
 - [01-03]: .select('-carPool') added proactively before Phase 3 adds carPool field to prevent payload bloat on event list loads
+- [03-01]: carPool embedded as Event sub-document with _id:false on both schemas; default: () => ({}) factory ensures existing events unaffected
+- [03-01]: Population added only to GET /:id handler (not list endpoints) — list endpoints retain .select('-carPool') for payload efficiency
 - [01-01]: Health status field normalized to lowercase 'ok'; V8 startup log inside server.listen callback; notificationScheduler.js deleted entirely (not commented out)
 - [01-04]: notificationRoutes.js queries live in notificationController.js — added .lean() to controller instead of route file
 - [01-04]: Fixed Team.findById(populatedObj) to Team.findById(obj._id||obj) after adding .lean() — leaned populated fields are plain objects, not ObjectIds
@@ -74,6 +77,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-24
-Stopped at: Completed 02-02-PLAN.md — PDF import per-match selection + duplicate detection + debug log removal
+Last session: 2026-02-26
+Stopped at: Completed 03-01-PLAN.md — Event schema carPool sub-document + GET /:id population
 Resume file: None
