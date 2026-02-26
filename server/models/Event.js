@@ -1,5 +1,18 @@
 const mongoose = require('mongoose');
 
+const carPoolDriverSchema = new mongoose.Schema({
+  player: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  seats: { type: Number, required: true, min: 1, max: 9 },
+  note: { type: String, default: '' },
+  passengers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+}, { _id: false });
+
+const carPoolSchema = new mongoose.Schema({
+  finalized: { type: Boolean, default: false },
+  drivers: [carPoolDriverSchema],
+  passengers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+}, { _id: false });
+
 const EventSchema = new mongoose.Schema({
   title: {
     type: String,
@@ -303,7 +316,8 @@ const EventSchema = new mongoose.Schema({
       type: Boolean,
       default: true
     }
-  }]
+  }],
+  carPool: { type: carPoolSchema, default: () => ({}) }
 }, {
   timestamps: true
 });
