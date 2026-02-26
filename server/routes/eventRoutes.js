@@ -1763,4 +1763,143 @@ router.patch('/:id/carpool/pick-driver', protect, player, async (req, res) => {
   }
 });
 
+// @desc    Coach manually assigns a passenger to a driver
+// @route   PATCH /api/events/:id/carpool/assign
+// @access  Private (coach)
+router.patch('/:id/carpool/assign', protect, coach, async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ message: 'Event not found' });
+    if (event.type !== 'Game') return res.status(400).json({ message: 'Fahrgemeinschaft ist nur für Spiele verfügbar' });
+
+    const { passengerId, driverId } = req.body;
+
+    // Verify passenger is registered
+    const isRegistered = event.carPool.passengers.some(p => p.toString() === passengerId.toString());
+    if (!isRegistered) {
+      return res.status(400).json({ message: 'Spieler ist nicht als Mitfahrer registriert' });
+    }
+
+    // Find target driver
+    const targetDriver = event.carPool.drivers.find(d => d.player.toString() === driverId.toString());
+    if (!targetDriver) {
+      return res.status(404).json({ message: 'Fahrer nicht gefunden' });
+    }
+
+    // Remove from any current driver assignment
+    event.carPool.drivers.forEach(d => {
+      d.passengers = d.passengers.filter(p => p.toString() !== passengerId.toString());
+    });
+
+    // Assign to target driver (coach override — no capacity check enforced)
+    targetDriver.passengers.push(passengerId);
+
+    await event.save();
+    const updated = await Event.findById(event._id)
+      .populate('carPool.drivers.player', 'name')
+      .populate({ path: 'carPool.drivers.passengers', select: 'name' })
+      .populate('carPool.passengers', 'name')
+      .lean();
+    res.json(updated.carPool);
+  } catch (error) {
+    console.error('Error assigning passenger:', error);
+    res.status(500).json({ message: 'Serverfehler beim Zuweisen des Mitfahrers' });
+  }
+});
+
+// @desc    Coach finalizes carpool — sends personalized push notifications
+// @route   POST /api/events/:id/carpool/finalize
+// @access  Private (coach)
+router.post('/:id/carpool/finalize', protect, coach, async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ message: 'Event not found' });
+    if (event.type !== 'Game') return res.status(400).json({ message: 'Fahrgemeinschaft ist nur für Spiele verfügbar' });
+
+    event.carPool.finalized = true;
+    await event.save();
+
+    // Populate for notification loop — do NOT use .lean() here (ObjectId comparisons)
+    const populatedEvent = await Event.findById(event._id)
+      .populate('carPool.drivers.player', 'name')
+      .populate({ path: 'carPool.drivers.passengers', select: 'name _id' })
+      .populate('carPool.passengers', 'name _id');
+
+    const eventTitle = populatedEvent.title;
+    const eventId = populatedEvent._id;
+
+    // Send personalized notifications to all drivers
+    for (const driver of populatedEvent.carPool.drivers) {
+      const subs = await PushSubscription.find({ user: driver.player._id });
+      for (const sub of subs) {
+        await sendNotification(sub.subscription, {
+          title: `Fahrgemeinschaft: ${eventTitle}`,
+          body: 'Fahrgemeinschaft abgeschlossen — du fährst. Prüfe deine Mitfahrer.',
+          icon: '/logo192.png',
+          badge: '/logo192.png',
+          tag: `carpool-finalized-${eventId}`,
+          data: { url: `/player/events/${eventId}` }
+        });
+      }
+    }
+
+    // Send personalized notifications to all passengers
+    for (const passenger of populatedEvent.carPool.passengers) {
+      const assignedDriver = populatedEvent.carPool.drivers.find(d =>
+        d.passengers.some(p => p._id.toString() === passenger._id.toString())
+      );
+
+      const body = assignedDriver
+        ? `Fahrgemeinschaft abgeschlossen — du fährst mit ${assignedDriver.player.name}.`
+        : 'Fahrgemeinschaft abgeschlossen — dir wurde noch kein Auto zugeteilt.';
+
+      const subs = await PushSubscription.find({ user: passenger._id });
+      for (const sub of subs) {
+        await sendNotification(sub.subscription, {
+          title: `Fahrgemeinschaft: ${eventTitle}`,
+          body,
+          icon: '/logo192.png',
+          badge: '/logo192.png',
+          tag: `carpool-finalized-${eventId}`,
+          data: { url: `/player/events/${eventId}` }
+        });
+      }
+    }
+
+    const updated = await Event.findById(event._id)
+      .populate('carPool.drivers.player', 'name')
+      .populate({ path: 'carPool.drivers.passengers', select: 'name' })
+      .populate('carPool.passengers', 'name')
+      .lean();
+    res.json(updated.carPool);
+  } catch (error) {
+    console.error('Error finalizing carpool:', error);
+    res.status(500).json({ message: 'Serverfehler beim Abschließen der Fahrgemeinschaft' });
+  }
+});
+
+// @desc    Coach re-opens a finalized carpool
+// @route   POST /api/events/:id/carpool/reopen
+// @access  Private (coach)
+router.post('/:id/carpool/reopen', protect, coach, async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ message: 'Event not found' });
+    if (event.type !== 'Game') return res.status(400).json({ message: 'Fahrgemeinschaft ist nur für Spiele verfügbar' });
+
+    event.carPool.finalized = false;
+    await event.save();
+
+    const updated = await Event.findById(event._id)
+      .populate('carPool.drivers.player', 'name')
+      .populate({ path: 'carPool.drivers.passengers', select: 'name' })
+      .populate('carPool.passengers', 'name')
+      .lean();
+    res.json(updated.carPool);
+  } catch (error) {
+    console.error('Error reopening carpool:', error);
+    res.status(500).json({ message: 'Serverfehler beim Öffnen der Fahrgemeinschaft' });
+  }
+});
+
 module.exports = router;
