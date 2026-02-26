@@ -10,6 +10,8 @@ const { processTrainingPoolAutoInvite, processVotingDeadlineAutoDecline } = requ
 const { toBerlinTime, formatBerlinTime, nowInBerlin } = require('../utils/timezoneUtils');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
+const PushSubscription = require('../models/PushSubscription');
+const { sendNotification } = require('../utils/webpush');
 
 /**
  * TIMEZONE HANDLING:
@@ -1607,6 +1609,157 @@ router.post('/:id/process-attendance', protect, coach, async (req, res) => {
   } catch (error) {
     console.error('Error processing attendance manually:', error);
     res.status(500).json({ message: 'Fehler beim Verarbeiten der Anwesenheit' });
+  }
+});
+
+// ==================== CAR POOL ROUTES ====================
+
+// Helper: check standard carpool preconditions for player routes
+const checkCarpoolPlayerPreconditions = async (req, res) => {
+  const event = await Event.findById(req.params.id);
+  if (!event) { res.status(404).json({ message: 'Event not found' }); return null; }
+  if (event.type !== 'Game') { res.status(400).json({ message: 'Fahrgemeinschaft ist nur für Spiele verfügbar' }); return null; }
+  if (event.carPool?.finalized) { res.status(409).json({ message: 'Fahrgemeinschaft ist abgeschlossen — keine Änderungen mehr möglich' }); return null; }
+  if (!event.attendingPlayers.some(p => p.toString() === req.user._id.toString())) {
+    res.status(403).json({ message: 'Nur angemeldete Spieler können sich für die Fahrgemeinschaft registrieren' });
+    return null;
+  }
+  return event;
+};
+
+// Helper: first-fit auto-assignment — assigns to driver with most remaining capacity
+const autoAssignPassenger = (drivers, passengerId) => {
+  const available = drivers
+    .filter(d => d.seats - d.passengers.length > 0)
+    .sort((a, b) => (b.seats - b.passengers.length) - (a.seats - a.passengers.length));
+  if (available.length === 0) return null;
+  available[0].passengers.push(passengerId);
+  return available[0].player;
+};
+
+// @desc    Player registers as driver or passenger
+// @route   POST /api/events/:id/carpool/register
+// @access  Private (player)
+router.post('/:id/carpool/register', protect, player, async (req, res) => {
+  try {
+    const event = await checkCarpoolPlayerPreconditions(req, res);
+    if (!event) return;
+
+    const { role, seats, note } = req.body;
+    const userId = req.user._id;
+
+    if (!['driver', 'passenger'].includes(role)) {
+      return res.status(400).json({ message: 'Rolle muss "driver" oder "passenger" sein' });
+    }
+
+    // Remove any existing registration first
+    event.carPool.drivers = event.carPool.drivers.filter(d => d.player.toString() !== userId.toString());
+    event.carPool.passengers = event.carPool.passengers.filter(p => p.toString() !== userId.toString());
+    event.carPool.drivers.forEach(d => {
+      d.passengers = d.passengers.filter(p => p.toString() !== userId.toString());
+    });
+
+    if (role === 'driver') {
+      if (!seats || seats < 1 || seats > 9) {
+        return res.status(400).json({ message: 'Anzahl der Plätze muss zwischen 1 und 9 liegen' });
+      }
+      event.carPool.drivers.push({ player: userId, seats: parseInt(seats), note: note || '', passengers: [] });
+    } else {
+      // Register as passenger
+      event.carPool.passengers.push(userId);
+      // Auto-assign to driver with most remaining capacity
+      autoAssignPassenger(event.carPool.drivers, userId);
+    }
+
+    await event.save();
+    const updated = await Event.findById(event._id)
+      .populate('carPool.drivers.player', 'name')
+      .populate({ path: 'carPool.drivers.passengers', select: 'name' })
+      .populate('carPool.passengers', 'name')
+      .lean();
+    res.json(updated.carPool);
+  } catch (error) {
+    console.error('Error registering for carpool:', error);
+    res.status(500).json({ message: 'Serverfehler bei der Fahrgemeinschaft-Registrierung' });
+  }
+});
+
+// @desc    Player withdraws from carpool
+// @route   DELETE /api/events/:id/carpool/register
+// @access  Private (player)
+router.delete('/:id/carpool/register', protect, player, async (req, res) => {
+  try {
+    const event = await checkCarpoolPlayerPreconditions(req, res);
+    if (!event) return;
+
+    const userId = req.user._id;
+
+    event.carPool.drivers = event.carPool.drivers.filter(d => d.player.toString() !== userId.toString());
+    event.carPool.passengers = event.carPool.passengers.filter(p => p.toString() !== userId.toString());
+    event.carPool.drivers.forEach(d => {
+      d.passengers = d.passengers.filter(p => p.toString() !== userId.toString());
+    });
+
+    await event.save();
+    const updated = await Event.findById(event._id)
+      .populate('carPool.drivers.player', 'name')
+      .populate({ path: 'carPool.drivers.passengers', select: 'name' })
+      .populate('carPool.passengers', 'name')
+      .lean();
+    res.json(updated.carPool);
+  } catch (error) {
+    console.error('Error withdrawing from carpool:', error);
+    res.status(500).json({ message: 'Serverfehler beim Abmelden von der Fahrgemeinschaft' });
+  }
+});
+
+// @desc    Passenger manually picks a driver
+// @route   PATCH /api/events/:id/carpool/pick-driver
+// @access  Private (player)
+router.patch('/:id/carpool/pick-driver', protect, player, async (req, res) => {
+  try {
+    const event = await checkCarpoolPlayerPreconditions(req, res);
+    if (!event) return;
+
+    const { driverId } = req.body;
+    const userId = req.user._id;
+
+    // Verify user is a registered passenger
+    const isPassenger = event.carPool.passengers.some(p => p.toString() === userId.toString());
+    if (!isPassenger) {
+      return res.status(400).json({ message: 'Du bist nicht als Mitfahrer registriert' });
+    }
+
+    // Find target driver
+    const targetDriver = event.carPool.drivers.find(d => d.player.toString() === driverId.toString());
+    if (!targetDriver) {
+      return res.status(404).json({ message: 'Fahrer nicht gefunden' });
+    }
+
+    // Check remaining capacity
+    const remainingSeats = targetDriver.seats - targetDriver.passengers.length;
+    if (remainingSeats <= 0) {
+      return res.status(400).json({ message: 'Dieser Fahrer hat keine freien Plätze mehr' });
+    }
+
+    // Remove from current driver assignment (if any)
+    event.carPool.drivers.forEach(d => {
+      d.passengers = d.passengers.filter(p => p.toString() !== userId.toString());
+    });
+
+    // Add to chosen driver
+    targetDriver.passengers.push(userId);
+
+    await event.save();
+    const updated = await Event.findById(event._id)
+      .populate('carPool.drivers.player', 'name')
+      .populate({ path: 'carPool.drivers.passengers', select: 'name' })
+      .populate('carPool.passengers', 'name')
+      .lean();
+    res.json(updated.carPool);
+  } catch (error) {
+    console.error('Error picking driver:', error);
+    res.status(500).json({ message: 'Serverfehler beim Auswählen des Fahrers' });
   }
 });
 
