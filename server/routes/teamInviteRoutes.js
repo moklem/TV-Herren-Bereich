@@ -60,16 +60,16 @@ router.post('/', protect, coach, async (req, res) => {
 // @access  Private/Coach
 router.get('/team/:teamId', protect, coach, async (req, res) => {
   try {
-    const team = await Team.findById(req.params.teamId);
+    const team = await Team.findById(req.params.teamId).lean();
     if (!team) {
       return res.status(404).json({ message: 'Team not found' });
     }
-    
+
     // Check if coach is authorized for this team
     if (!team.coaches.some(coach => coach.toString() === req.user._id.toString())) {
       return res.status(403).json({ message: 'Not authorized to view invites for this team' });
     }
-    
+
     const invites = await TeamInvite.find({ team: req.params.teamId })
       .populate('createdBy', 'name')
       .populate('usedBy.user', 'name email')
@@ -153,11 +153,11 @@ router.delete('/:id', protect, coach, async (req, res) => {
 router.get('/my-invites', protect, coach, async (req, res) => {
   try {
     // Find all teams where the user is a coach
-    const teams = await Team.find({ coaches: req.user._id });
+    const teams = await Team.find({ coaches: req.user._id }).lean();
     const teamIds = teams.map(team => team._id);
-    
+
     // Find all active invites for these teams
-    const invites = await TeamInvite.find({ 
+    const invites = await TeamInvite.find({
       team: { $in: teamIds },
       isActive: true
     })

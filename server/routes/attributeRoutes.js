@@ -104,18 +104,19 @@ router.get('/player/:playerId', protect, coach, async (req, res) => {
       }
     } else {
       // Get teams coached by this user
-      const teams = await Team.find({ coaches: req.user._id });
+      const teams = await Team.find({ coaches: req.user._id }).lean();
       const teamIds = teams.map(team => team._id);
-      
+
       filter.team = { $in: teamIds };
     }
-    
+
     const attributes = await PlayerAttribute.find(filter)
       .populate('player', 'name email')
       .populate('updatedBy', 'name email')
       .populate('team', 'name type')
-      .sort({ category: 1, attributeName: 1 });
-    
+      .sort({ category: 1, attributeName: 1 })
+      .lean();
+
     res.json(attributes);
   } catch (error) {
     console.error(error);
@@ -155,8 +156,9 @@ router.get('/team/:teamId', protect, coach, async (req, res) => {
     const attributes = await PlayerAttribute.find(filter)
       .populate('player', 'name email')
       .populate('updatedBy', 'name email')
-      .sort({ player: 1, category: 1, attributeName: 1 });
-    
+      .sort({ player: 1, category: 1, attributeName: 1 })
+      .lean();
+
     res.json(attributes);
   } catch (error) {
     console.error(error);
@@ -176,16 +178,18 @@ router.get('/:id', protect, coach, async (req, res) => {
       .populate({
         path: 'history.updatedBy',
         select: 'name email'
-      });
-    
+      })
+      .lean();
+
     if (attribute) {
       // Check if coach is authorized to view this attribute
-      const team = await Team.findById(attribute.team);
-      
+      const teamId = attribute.team?._id || attribute.team;
+      const team = await Team.findById(teamId);
+
       if (!team.coaches.includes(req.user._id)) {
         return res.status(403).json({ message: 'Not authorized to view this attribute' });
       }
-      
+
       res.json(attribute);
     } else {
       res.status(404).json({ message: 'Attribute not found' });
@@ -478,7 +482,8 @@ router.get('/universal/:playerId', protect, async (req, res) => {
     })
     .populate('player', 'name email')
     .populate('updatedBy', 'name email')
-    .sort({ attributeName: 1 });
+    .sort({ attributeName: 1 })
+    .lean();
 
     res.json(attributes);
 
@@ -572,20 +577,21 @@ router.get('/progress/:playerId/:attributeName', protect, coach, async (req, res
       }
     } else {
       // Get teams coached by this user
-      const teams = await Team.find({ coaches: req.user._id });
+      const teams = await Team.find({ coaches: req.user._id }).lean();
       const teamIds = teams.map(team => team._id);
-      
+
       filter.team = { $in: teamIds };
     }
-    
+
     const attribute = await PlayerAttribute.findOne(filter)
       .populate('player', 'name email')
       .populate('team', 'name type')
       .populate({
         path: 'history.updatedBy',
         select: 'name email'
-      });
-    
+      })
+      .lean();
+
     if (!attribute) {
       return res.status(404).json({ message: 'Attribute not found' });
     }
@@ -693,10 +699,10 @@ router.get('/level-progress/:playerId', protect, async (req, res) => {
         { team: null },
         { team: { $exists: false } }
       ]
-    }).sort({ attributeName: 1 });
+    }).sort({ attributeName: 1 }).lean();
 
     const leagues = PlayerAttribute.getLeagueLevels();
-    
+
     const progress = attributes.map(attr => ({
       attributeName: attr.attributeName,
       numericValue: attr.numericValue,
@@ -708,7 +714,7 @@ router.get('/level-progress/:playerId', protect, async (req, res) => {
     }));
 
     // Calculate overall level rating
-    const player = await User.findById(playerId).select('position');
+    const player = await User.findById(playerId).select('position').lean();
     const overallLevelData = await PlayerAttribute.calculateOverallLevelRating(playerId, player?.position);
 
     res.json({
@@ -837,7 +843,7 @@ router.get('/self-assessment/:playerId', protect, async (req, res) => {
       player: playerId,
       team: null,
       selfLevel: { $ne: null }
-    }).populate('player', 'name');
+    }).populate('player', 'name').lean();
 
     res.json(attributes);
   } catch (error) {
@@ -934,7 +940,7 @@ router.get('/self-assessment-status/:playerId', protect, async (req, res) => {
       player: playerId,
       team: null,
       selfLevel: { $ne: null }
-    });
+    }).lean();
 
     // Check if all core attributes have been assessed (8 attributes)
     const hasCompleted = attributes.length >= 8;
@@ -1066,7 +1072,7 @@ router.get('/focus-areas/:playerId', protect, async (req, res) => {
     const attributes = await PlayerAttribute.find({
       player: playerId,
       team: null
-    });
+    }).lean();
 
     console.log(`Found ${attributes.length} universal attributes for player`);
 

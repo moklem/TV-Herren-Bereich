@@ -10,6 +10,8 @@ const { processTrainingPoolAutoInvite, processVotingDeadlineAutoDecline } = requ
 const { toBerlinTime, formatBerlinTime, nowInBerlin } = require('../utils/timezoneUtils');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
+const PushSubscription = require('../models/PushSubscription');
+const { sendNotification } = require('../utils/webpush');
 
 /**
  * TIMEZONE HANDLING:
@@ -112,9 +114,6 @@ router.post('/', protect, coach, async (req, res) => {
       trainingPoolAutoInvite
     } = req.body;
 
-    // Debug logging for training pool auto-invite
-    console.log('Creating event with trainingPoolAutoInvite:', JSON.stringify(trainingPoolAutoInvite, null, 2));
-    
     // Validate trainingPoolAutoInvite - if poolId is empty, disable auto-invite
     if (trainingPoolAutoInvite?.enabled && !trainingPoolAutoInvite?.poolId) {
       console.warn('Auto-invite enabled but no pool selected, disabling auto-invite');
@@ -282,12 +281,29 @@ router.post('/', protect, coach, async (req, res) => {
 });
 
 // Configure multer for memory storage
-const upload = multer({ storage: multer.memoryStorage() });
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024; // 10 MB
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_UPLOAD_SIZE }
+});
 
 // @route   POST /api/events/parse-pdf
 // @desc    Parse match schedule PDF and extract match data
 // @access  Private/Coach
-router.post('/parse-pdf', protect, coach, upload.single('pdf'), async (req, res) => {
+router.post('/parse-pdf', protect, coach, (req, res, next) => {
+  upload.single('pdf')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({
+          message: 'Die Datei ist zu groß. Maximale Dateigröße: 10 MB.'
+        });
+      }
+      return res.status(400).json({ message: 'Upload-Fehler: ' + err.message });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'Keine PDF-Datei hochgeladen' });
@@ -297,156 +313,72 @@ router.post('/parse-pdf', protect, coach, upload.single('pdf'), async (req, res)
     const pdfData = await pdfParse(req.file.buffer);
     const text = pdfData.text;
 
-    console.log('=== PDF PARSING DEBUG ===');
-    console.log('PDF text length:', text.length);
-    console.log('First 1000 characters:', text.substring(0, 1000));
-
-    // Search entire PDF for match data (not just Spielplan section)
-    // The PDF might have a table structure where columns are separated
-    const matches = [];
-    const lines = text.split('\n');
-
-    console.log('Total lines in entire PDF:', lines.length);
-    let matchedLines = 0;
-    let unmatchedLines = [];
-
-    // Extract hall information for later use
-    const halleMatch = text.match(/Halle[\s\S]*?(?=\n\s*1\.3\.|$)/);
+    // Build hall abbreviation → full address map from the PDF's hall table
     const hallMap = {};
-
-    if (halleMatch) {
-      const halleText = halleMatch[0];
-      const halleLines = halleText.split('\n').filter(line => line.trim());
-
-      for (const line of halleLines) {
-        const hallMatch = line.match(/^([A-Za-z]+\d+)\s+(.+?)\s+(.+?)\s+(\d{5})\s+(.+)$/);
-        if (hallMatch) {
-          const [, code, name, address, plz, ort] = hallMatch;
-          hallMap[code] = {
-            name: name.trim(),
-            address: address.trim(),
-            plz: plz.trim(),
-            ort: ort.trim()
-          };
+    const halleSection = text.match(/Halle[\s\S]*?(?=\n\s*1\.3\.|$)/);
+    if (halleSection) {
+      for (const line of halleSection[0].split('\n')) {
+        const m = line.match(/^([A-Za-z]+\d+)\s+(.+?)\s{2,}(.+?)\s{2,}(\d{5})\s+(.+)$/);
+        if (m) {
+          const [, code, name, address, plz, ort] = m;
+          hallMap[code.trim()] = `${name.trim()}, ${address.trim()}, ${plz} ${ort.trim()}`;
         }
       }
     }
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
+    // LLM-based match extraction via OpenRouter
+    const llmRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://inteam.onrender.com',
+        'X-Title': 'InTeam Volleyball'
+      },
+      body: JSON.stringify({
+        model: 'stepfun/step-3.5-flash:free',
+        messages: [{
+          role: 'user',
+          content: `Extract all volleyball match entries from this German schedule PDF text. Return ONLY a valid JSON array with no other text or markdown. Each element must have: {"nr": number, "datum": "DD.MM.YYYY", "zeit": "HH:MM", "teamA": "string", "teamB": "string", "location": "string"}\n\nPDF Text:\n${text}`
+        }],
+        temperature: 0.1
+      })
+    });
 
-      // Skip empty lines and header lines
-      if (!line || line.includes('Team A') || line.includes('Datum') || line === 'Nr' || line === 'Zeit' || line === 'Ergebnis') {
-        continue;
-      }
+    if (!llmRes.ok) {
+      throw new Error(`OpenRouter API error: ${llmRes.status}`);
+    }
 
-      // Try multiple patterns for different PDF formats
-      let match = null;
-      let nr, datum, zeit, teamA, teamB, extra;
+    const llmData = await llmRes.json();
+    const rawContent = llmData.choices?.[0]?.message?.content || '[]';
 
-      // Pattern 1: Standard space-separated with -:-
-      // Example: "1 11.10.2025 14:00 TV Hersbruck TV Fürth 1860 III -:- Hers1"
-      const pattern1 = line.match(/^(\d+)\s+(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})\s+(.+?)\s+(.+?)\s+-:-\s*(.*)$/);
-      if (pattern1) {
-        [, nr, datum, zeit, teamA, teamB, extra] = pattern1;
-        match = true;
-      }
+    // Extract JSON array — LLM may wrap output in markdown code fences
+    let matches = [];
+    const jsonMatch = rawContent.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      matches = JSON.parse(jsonMatch[0]);
+    }
 
-      // Pattern 2: Just number, date, and time on same line (teams might be on next lines)
-      // This handles PDFs where each column is a separate line
-      if (!match && /^(\d+)\s+(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})$/.test(line)) {
-        const parts = line.match(/^(\d+)\s+(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})$/);
-        if (parts && i + 2 < lines.length) {
-          nr = parts[1];
-          datum = parts[2];
-          zeit = parts[3];
-          teamA = lines[i + 1].trim();
-          teamB = lines[i + 2].trim();
-          extra = lines[i + 3] ? lines[i + 3].trim() : '';
-
-          // Skip if these look like headers
-          if (teamA && teamB && teamA !== 'Team A' && teamB !== 'Team B' && teamA !== 'Ergebnis') {
-            match = true;
-            i += 2; // Skip the next 2 lines since we've used them
-          }
-        }
-      }
-
-      if (match) {
-        matchedLines++;
-        console.log(`Match ${matchedLines} (line ${i}): Nr=${nr}, Date=${datum}, Time=${zeit}, TeamA=${teamA}, TeamB=${teamB}`);
-
-        // Extract hall code from extra field or teamB
-        let halleCode = '';
-        let finalTeamB = teamB;
-
-        // Check if there's a hall code in the extra field or at the end of teamB
-        const combinedText = `${teamB} ${extra || ''}`.trim();
-        const parts = combinedText.split(/\s+/);
-
-        // Check if last part matches hall code pattern (letters + numbers)
-        if (parts.length > 1 && /^[A-Za-z]+\d+$/.test(parts[parts.length - 1])) {
-          halleCode = parts[parts.length - 1];
-          finalTeamB = parts.slice(0, -1).join(' ');
-        }
-
-        // Get location details from hall map
-        let location = '';
-        if (halleCode && hallMap[halleCode]) {
-          const hall = hallMap[halleCode];
-          location = `${hall.name}, ${hall.address}, ${hall.plz} ${hall.ort}`;
-        } else if (halleCode) {
-          location = halleCode;
-        }
-
-        matches.push({
-          nr: parseInt(nr),
-          datum,
-          zeit,
-          teamA: teamA.trim(),
-          teamB: finalTeamB.trim(),
+    // Normalize fields, resolve hall abbreviations, and filter out incomplete entries
+    matches = matches
+      .map(m => {
+        const halleCode = (m.location || '').trim();
+        const location = hallMap[halleCode] || halleCode;
+        return {
+          nr: parseInt(m.nr) || 0,
+          datum: (m.datum || '').trim(),
+          zeit: (m.zeit || '').trim(),
+          teamA: (m.teamA || '').trim(),
+          teamB: (m.teamB || '').trim(),
           halleCode,
           location
-        });
-      } else {
-        // Log unmatched lines for debugging (skip header lines and short lines)
-        if (line.length > 5 && !line.includes('Spielplan') && line !== 'Nr' && !line.includes('Team')) {
-          unmatchedLines.push(line);
-        }
-      }
-    }
+        };
+      })
+      .filter(m => m.datum && m.teamA && m.teamB);
 
-    console.log(`Matched ${matchedLines} lines out of ${lines.length} total lines`);
-    if (unmatchedLines.length > 0) {
-      console.log('Sample of unmatched lines:', unmatchedLines.slice(0, 5));
-    }
+    const teams = [...new Set([...matches.map(m => m.teamA), ...matches.map(m => m.teamB)])].sort();
 
-    // Extract unique team names
-    const teams = new Set();
-    matches.forEach(match => {
-      teams.add(match.teamA);
-      teams.add(match.teamB);
-    });
-
-    console.log('Extracted teams:', Array.from(teams));
-    console.log('Total matches found:', matches.length);
-    console.log('=== END PDF PARSING DEBUG ===');
-
-    res.json({
-      matches,
-      teams: Array.from(teams).sort(),
-      totalMatches: matches.length,
-      debug: {
-        pdfTextLength: text.length,
-        pdfTextPreview: text.substring(0, 1000),
-        fullPdfSample: text.substring(2000, 4000), // Middle section sample
-        totalLines: lines.length,
-        matchedLines,
-        unmatchedLinesSample: unmatchedLines.slice(0, 10),
-        firstFewLines: lines.slice(0, 30).map((l, i) => `${i}: ${l}`),
-        linesAround100: lines.slice(95, 115).map((l, i) => `${i + 95}: ${l}`)
-      }
-    });
+    res.json({ matches, teams, totalMatches: matches.length });
 
   } catch (error) {
     console.error('PDF parsing error:', error);
@@ -495,7 +427,9 @@ router.get('/', protect, async (req, res) => {
           select: 'name type'
         })
         .populate('trainingPoolAutoInvite.poolId', 'name type leagueLevel')
-        .sort({ startTime: 1 });
+        .select('-carPool')
+        .sort({ startTime: 1 })
+        .lean();
     } else {
       // For players (Spieler and Jugendspieler), get events where:
       // 1. They are explicitly invited
@@ -505,9 +439,9 @@ router.get('/', protect, async (req, res) => {
       // 5. NEW: The event belongs to one of their teams
       
       // First, get all teams the player belongs to
-      const playerTeams = await Team.find({ 
-        players: req.user._id 
-      }).select('_id');
+      const playerTeams = await Team.find({
+        players: req.user._id
+      }).select('_id').lean();
       
       const teamIds = playerTeams.map(team => team._id);
       
@@ -546,9 +480,11 @@ router.get('/', protect, async (req, res) => {
           select: 'name type'
         })
         .populate('trainingPoolAutoInvite.poolId', 'name type leagueLevel')
-        .sort({ startTime: 1 });
+        .select('-carPool')
+        .sort({ startTime: 1 })
+        .lean();
     }
-    
+
     res.json(events);
   } catch (error) {
     console.error(error);
@@ -584,11 +520,19 @@ router.get('/:id', protect, async (req, res) => {
       .populate({
         path: 'guestPlayers.fromTeam',
         select: 'name type'
-      });
-    
+      })
+      .populate('carPool.drivers.player', 'name')
+      .populate({
+        path: 'carPool.drivers.passengers',
+        select: 'name'
+      })
+      .populate('carPool.passengers', 'name')
+      .lean();
+
     if (event) {
       // Check if user is authorized to view this event
-      const team = await Team.findById(event.team);
+      const teamId = event.team?._id || event.team;
+      const team = await Team.findById(teamId);
       
       // Allow access if:
       // 1. User is a coach
@@ -646,9 +590,6 @@ router.put('/:id', protect, coach, async (req, res) => {
       notificationSettings,
       trainingPoolAutoInvite
     } = req.body;
-    
-    // Debug logging for training pool auto-invite
-    console.log('Updating event with trainingPoolAutoInvite:', JSON.stringify(trainingPoolAutoInvite, null, 2));
     
     // Validate trainingPoolAutoInvite - if poolId is empty, disable auto-invite
     if (trainingPoolAutoInvite?.enabled && !trainingPoolAutoInvite?.poolId) {
@@ -712,8 +653,7 @@ router.put('/:id', protect, coach, async (req, res) => {
         if (trainingPoolAutoInvite !== undefined) event.trainingPoolAutoInvite = trainingPoolAutoInvite;
         
         await event.save();
-        console.log('Event saved with trainingPoolAutoInvite:', JSON.stringify(event.trainingPoolAutoInvite, null, 2));
-        
+
         // Schedule notifications for the parent event
         await scheduleEventNotifications(event._id);
         
@@ -1281,16 +1221,16 @@ router.post('/:id/invitedPlayers', protect, coach, async (req, res) => {
 // @access  Private
 router.get('/:id/can-edit', protect, async (req, res) => {
   try {
-    const event = await Event.findById(req.params.id).populate('team');
-    
+    const event = await Event.findById(req.params.id).populate('team').lean();
+
     if (!event) {
       return res.status(404).json({ message: 'Event not found' });
     }
-    
+
     // Check if user is a coach AND part of the event's team
-    const canEdit = req.user.role === 'Trainer' && 
+    const canEdit = req.user.role === 'Trainer' &&
                     event.team.coaches.some(coach => coach.toString() === req.user._id.toString());
-    
+
     res.json({ canEdit });
   } catch (error) {
     console.error(error);
@@ -1474,12 +1414,12 @@ router.post('/:id/guest/unsure', protect, async (req, res) => {
 // @access  Private/Coach
 router.get('/:id/feedback/check', protect, coach, async (req, res) => {
   try {
-    const event = await Event.findById(req.params.id);
-    
+    const event = await Event.findById(req.params.id).lean();
+
     if (!event) {
       return res.status(404).json({ message: 'Event not found' });
     }
-    
+
     // Check if this coach already provided feedback
     const alreadyProvided = event.quickFeedback && event.quickFeedback.some(
       feedback => feedback.coach.toString() === req.user._id.toString() && feedback.provided === true
@@ -1669,6 +1609,332 @@ router.post('/:id/process-attendance', protect, coach, async (req, res) => {
   } catch (error) {
     console.error('Error processing attendance manually:', error);
     res.status(500).json({ message: 'Fehler beim Verarbeiten der Anwesenheit' });
+  }
+});
+
+// ==================== CAR POOL ROUTES ====================
+
+// Helper: check standard carpool preconditions for player routes
+const checkCarpoolPlayerPreconditions = async (req, res) => {
+  const event = await Event.findById(req.params.id);
+  if (!event) { res.status(404).json({ message: 'Event not found' }); return null; }
+  if (event.type !== 'Game') { res.status(400).json({ message: 'Fahrgemeinschaft ist nur für Spiele verfügbar' }); return null; }
+  if (event.carPool?.finalized) { res.status(409).json({ message: 'Fahrgemeinschaft ist abgeschlossen — keine Änderungen mehr möglich' }); return null; }
+  if (!event.attendingPlayers.some(p => p.toString() === req.user._id.toString())) {
+    res.status(403).json({ message: 'Nur angemeldete Spieler können sich für die Fahrgemeinschaft registrieren' });
+    return null;
+  }
+  return event;
+};
+
+// Helper: first-fit auto-assignment — assigns to driver with most remaining capacity
+const autoAssignPassenger = (drivers, passengerId) => {
+  const available = drivers
+    .filter(d => d.seats - d.passengers.length > 0)
+    .sort((a, b) => (b.seats - b.passengers.length) - (a.seats - a.passengers.length));
+  if (available.length === 0) return null;
+  available[0].passengers.push(passengerId);
+  return available[0].player;
+};
+
+// @desc    Player registers as driver or passenger
+// @route   POST /api/events/:id/carpool/register
+// @access  Private (player)
+router.post('/:id/carpool/register', protect, player, async (req, res) => {
+  try {
+    const event = await checkCarpoolPlayerPreconditions(req, res);
+    if (!event) return;
+
+    const { role, seats, note } = req.body;
+    const userId = req.user._id;
+
+    if (!['driver', 'passenger'].includes(role)) {
+      return res.status(400).json({ message: 'Rolle muss "driver" oder "passenger" sein' });
+    }
+
+    // Remove any existing registration first
+    event.carPool.drivers = event.carPool.drivers.filter(d => d.player.toString() !== userId.toString());
+    event.carPool.passengers = event.carPool.passengers.filter(p => p.toString() !== userId.toString());
+    event.carPool.drivers.forEach(d => {
+      d.passengers = d.passengers.filter(p => p.toString() !== userId.toString());
+    });
+
+    if (role === 'driver') {
+      if (!seats || seats < 1 || seats > 9) {
+        return res.status(400).json({ message: 'Anzahl der Plätze muss zwischen 1 und 9 liegen' });
+      }
+      event.carPool.drivers.push({ player: userId, seats: parseInt(seats), note: note || '', passengers: [] });
+    } else {
+      // Register as passenger
+      event.carPool.passengers.push(userId);
+      // Auto-assign to driver with most remaining capacity
+      autoAssignPassenger(event.carPool.drivers, userId);
+    }
+
+    await event.save();
+    const updated = await Event.findById(event._id)
+      .populate('carPool.drivers.player', 'name')
+      .populate({ path: 'carPool.drivers.passengers', select: 'name' })
+      .populate('carPool.passengers', 'name')
+      .lean();
+    res.json(updated.carPool);
+  } catch (error) {
+    console.error('Error registering for carpool:', error);
+    res.status(500).json({ message: 'Serverfehler bei der Fahrgemeinschaft-Registrierung' });
+  }
+});
+
+// @desc    Player withdraws from carpool
+// @route   DELETE /api/events/:id/carpool/register
+// @access  Private (player)
+router.delete('/:id/carpool/register', protect, player, async (req, res) => {
+  try {
+    const event = await checkCarpoolPlayerPreconditions(req, res);
+    if (!event) return;
+
+    const userId = req.user._id;
+
+    event.carPool.drivers = event.carPool.drivers.filter(d => d.player.toString() !== userId.toString());
+    event.carPool.passengers = event.carPool.passengers.filter(p => p.toString() !== userId.toString());
+    event.carPool.drivers.forEach(d => {
+      d.passengers = d.passengers.filter(p => p.toString() !== userId.toString());
+    });
+
+    await event.save();
+    const updated = await Event.findById(event._id)
+      .populate('carPool.drivers.player', 'name')
+      .populate({ path: 'carPool.drivers.passengers', select: 'name' })
+      .populate('carPool.passengers', 'name')
+      .lean();
+    res.json(updated.carPool);
+  } catch (error) {
+    console.error('Error withdrawing from carpool:', error);
+    res.status(500).json({ message: 'Serverfehler beim Abmelden von der Fahrgemeinschaft' });
+  }
+});
+
+// @desc    Passenger manually picks a driver
+// @route   PATCH /api/events/:id/carpool/pick-driver
+// @access  Private (player)
+router.patch('/:id/carpool/pick-driver', protect, player, async (req, res) => {
+  try {
+    const event = await checkCarpoolPlayerPreconditions(req, res);
+    if (!event) return;
+
+    const { driverId } = req.body;
+    const userId = req.user._id;
+
+    // Verify user is a registered passenger
+    const isPassenger = event.carPool.passengers.some(p => p.toString() === userId.toString());
+    if (!isPassenger) {
+      return res.status(400).json({ message: 'Du bist nicht als Mitfahrer registriert' });
+    }
+
+    // Find target driver
+    const targetDriver = event.carPool.drivers.find(d => d.player.toString() === driverId.toString());
+    if (!targetDriver) {
+      return res.status(404).json({ message: 'Fahrer nicht gefunden' });
+    }
+
+    // Check remaining capacity
+    const remainingSeats = targetDriver.seats - targetDriver.passengers.length;
+    if (remainingSeats <= 0) {
+      return res.status(400).json({ message: 'Dieser Fahrer hat keine freien Plätze mehr' });
+    }
+
+    // Remove from current driver assignment (if any)
+    event.carPool.drivers.forEach(d => {
+      d.passengers = d.passengers.filter(p => p.toString() !== userId.toString());
+    });
+
+    // Add to chosen driver
+    targetDriver.passengers.push(userId);
+
+    await event.save();
+    const updated = await Event.findById(event._id)
+      .populate('carPool.drivers.player', 'name')
+      .populate({ path: 'carPool.drivers.passengers', select: 'name' })
+      .populate('carPool.passengers', 'name')
+      .lean();
+    res.json(updated.carPool);
+  } catch (error) {
+    console.error('Error picking driver:', error);
+    res.status(500).json({ message: 'Serverfehler beim Auswählen des Fahrers' });
+  }
+});
+
+// @desc    Coach manually assigns a passenger to a driver
+// @route   PATCH /api/events/:id/carpool/assign
+// @access  Private (coach)
+router.patch('/:id/carpool/assign', protect, coach, async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ message: 'Event not found' });
+    if (event.type !== 'Game') return res.status(400).json({ message: 'Fahrgemeinschaft ist nur für Spiele verfügbar' });
+
+    const { passengerId, driverId } = req.body;
+
+    // Verify passenger is registered
+    const isRegistered = event.carPool.passengers.some(p => p.toString() === passengerId.toString());
+    if (!isRegistered) {
+      return res.status(400).json({ message: 'Spieler ist nicht als Mitfahrer registriert' });
+    }
+
+    // Find target driver
+    const targetDriver = event.carPool.drivers.find(d => d.player.toString() === driverId.toString());
+    if (!targetDriver) {
+      return res.status(404).json({ message: 'Fahrer nicht gefunden' });
+    }
+
+    // Remove from any current driver assignment
+    event.carPool.drivers.forEach(d => {
+      d.passengers = d.passengers.filter(p => p.toString() !== passengerId.toString());
+    });
+
+    // Assign to target driver (coach override — no capacity check enforced)
+    targetDriver.passengers.push(passengerId);
+
+    await event.save();
+    const updated = await Event.findById(event._id)
+      .populate('carPool.drivers.player', 'name')
+      .populate({ path: 'carPool.drivers.passengers', select: 'name' })
+      .populate('carPool.passengers', 'name')
+      .lean();
+    res.json(updated.carPool);
+  } catch (error) {
+    console.error('Error assigning passenger:', error);
+    res.status(500).json({ message: 'Serverfehler beim Zuweisen des Mitfahrers' });
+  }
+});
+
+// @desc    Coach finalizes carpool — sends personalized push notifications
+// @route   POST /api/events/:id/carpool/finalize
+// @access  Private (coach)
+router.post('/:id/carpool/finalize', protect, coach, async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ message: 'Event not found' });
+    if (event.type !== 'Game') return res.status(400).json({ message: 'Fahrgemeinschaft ist nur für Spiele verfügbar' });
+
+    event.carPool.finalized = true;
+    await event.save();
+
+    // Populate for notification loop — do NOT use .lean() here (ObjectId comparisons)
+    const populatedEvent = await Event.findById(event._id)
+      .populate('carPool.drivers.player', 'name')
+      .populate({ path: 'carPool.drivers.passengers', select: 'name _id' })
+      .populate('carPool.passengers', 'name _id');
+
+    const eventTitle = populatedEvent.title;
+    const eventId = populatedEvent._id;
+
+    // Send personalized notifications to all drivers
+    for (const driver of populatedEvent.carPool.drivers) {
+      const subs = await PushSubscription.find({ user: driver.player._id });
+      for (const sub of subs) {
+        await sendNotification(sub.subscription, {
+          title: `Fahrgemeinschaft: ${eventTitle}`,
+          body: 'Fahrgemeinschaft abgeschlossen — du fährst. Prüfe deine Mitfahrer.',
+          icon: '/logo192.png',
+          badge: '/logo192.png',
+          tag: `carpool-finalized-${eventId}`,
+          data: { url: `/player/events/${eventId}` }
+        });
+      }
+    }
+
+    // Send personalized notifications to all passengers
+    for (const passenger of populatedEvent.carPool.passengers) {
+      const assignedDriver = populatedEvent.carPool.drivers.find(d =>
+        d.passengers.some(p => p._id.toString() === passenger._id.toString())
+      );
+
+      const body = assignedDriver
+        ? `Fahrgemeinschaft abgeschlossen — du fährst mit ${assignedDriver.player.name}.`
+        : 'Fahrgemeinschaft abgeschlossen — dir wurde noch kein Auto zugeteilt.';
+
+      const subs = await PushSubscription.find({ user: passenger._id });
+      for (const sub of subs) {
+        await sendNotification(sub.subscription, {
+          title: `Fahrgemeinschaft: ${eventTitle}`,
+          body,
+          icon: '/logo192.png',
+          badge: '/logo192.png',
+          tag: `carpool-finalized-${eventId}`,
+          data: { url: `/player/events/${eventId}` }
+        });
+      }
+    }
+
+    const updated = await Event.findById(event._id)
+      .populate('carPool.drivers.player', 'name')
+      .populate({ path: 'carPool.drivers.passengers', select: 'name' })
+      .populate('carPool.passengers', 'name')
+      .lean();
+    res.json(updated.carPool);
+  } catch (error) {
+    console.error('Error finalizing carpool:', error);
+    res.status(500).json({ message: 'Serverfehler beim Abschließen der Fahrgemeinschaft' });
+  }
+});
+
+// @desc    Coach re-opens a finalized carpool
+// @route   POST /api/events/:id/carpool/reopen
+// @access  Private (coach)
+router.post('/:id/carpool/reopen', protect, coach, async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ message: 'Event not found' });
+    if (event.type !== 'Game') return res.status(400).json({ message: 'Fahrgemeinschaft ist nur für Spiele verfügbar' });
+
+    event.carPool.finalized = false;
+    await event.save();
+
+    const updated = await Event.findById(event._id)
+      .populate('carPool.drivers.player', 'name')
+      .populate({ path: 'carPool.drivers.passengers', select: 'name' })
+      .populate('carPool.passengers', 'name')
+      .lean();
+    res.json(updated.carPool);
+  } catch (error) {
+    console.error('Error reopening carpool:', error);
+    res.status(500).json({ message: 'Serverfehler beim Öffnen der Fahrgemeinschaft' });
+  }
+});
+
+// @desc    Coach overrides a driver's note
+// @route   PATCH /api/events/:id/carpool/drivers/:driverId/note
+// @access  Private (coach)
+router.patch('/:id/carpool/drivers/:driverId/note', protect, coach, async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ message: 'Event not found' });
+    if (event.type !== 'Game') return res.status(400).json({ message: 'Fahrgemeinschaft ist nur für Spiele verfügbar' });
+
+    const { note } = req.body;
+    if (typeof note !== 'string') {
+      return res.status(400).json({ message: 'Notiz muss ein Text sein' });
+    }
+
+    const driver = event.carPool.drivers.find(
+      d => d.player.toString() === req.params.driverId
+    );
+    if (!driver) {
+      return res.status(404).json({ message: 'Fahrer nicht gefunden' });
+    }
+
+    driver.note = note.trim();
+    await event.save();
+
+    const updated = await Event.findById(event._id)
+      .populate('carPool.drivers.player', 'name')
+      .populate({ path: 'carPool.drivers.passengers', select: 'name' })
+      .populate('carPool.passengers', 'name')
+      .lean();
+    res.json(updated.carPool);
+  } catch (error) {
+    console.error('Error updating driver note:', error);
+    res.status(500).json({ message: 'Serverfehler beim Aktualisieren der Notiz' });
   }
 });
 

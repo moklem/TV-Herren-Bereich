@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useState, useRef } from 'react';
 
+import axios from 'axios';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -37,7 +38,12 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField
+  TextField,
+  FormControl,
+  FormLabel,
+  RadioGroup,
+  FormControlLabel,
+  Radio
 } from '@mui/material';
 
 import { AuthContext } from '../../context/AuthContext';
@@ -59,6 +65,14 @@ const EventDetail = () => {
   const [reason, setReason] = useState('');
   const [isVotingDeadlinePassed, setIsVotingDeadlinePassed] = useState(false);
   const reasonTextFieldRef = useRef(null);
+
+  // Carpool state
+  const [carpoolRole, setCarpoolRole] = useState('');
+  const [carpoolSeats, setCarpoolSeats] = useState(2);
+  const [carpoolNote, setCarpoolNote] = useState('');
+  const [carpoolLoading, setCarpoolLoading] = useState(false);
+  const [carpoolError, setCarpoolError] = useState('');
+  const [driverPickerOpen, setDriverPickerOpen] = useState(false);
 
   // Load event data
   useEffect(() => {
@@ -170,6 +184,95 @@ const EventDetail = () => {
       console.error(`Error ${reasonDialogType === 'decline' ? 'declining' : 'marking as unsure'}:`, error);
     }
   };
+
+  const handleCarpoolRegister = async () => {
+    if (!event) return;
+    setCarpoolLoading(true);
+    setCarpoolError('');
+    try {
+      const token = localStorage.getItem('token');
+      const body = carpoolRole === 'driver'
+        ? { role: 'driver', seats: carpoolSeats, note: carpoolNote }
+        : { role: 'passenger' };
+      await axios.post(
+        `${process.env.REACT_APP_API_URL}/events/${event._id}/carpool/register`,
+        body,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      await fetchEvent(event._id);
+    } catch (err) {
+      setCarpoolError(err.response?.data?.message || 'Fehler bei der Registrierung');
+    } finally {
+      setCarpoolLoading(false);
+    }
+  };
+
+  const handleCarpoolWithdraw = async () => {
+    if (!event) return;
+    setCarpoolLoading(true);
+    setCarpoolError('');
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(
+        `${process.env.REACT_APP_API_URL}/events/${event._id}/carpool/register`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setCarpoolRole('');
+      setCarpoolNote('');
+      await fetchEvent(event._id);
+    } catch (err) {
+      setCarpoolError(err.response?.data?.message || 'Fehler beim Abmelden');
+    } finally {
+      setCarpoolLoading(false);
+    }
+  };
+
+  const handlePickDriver = async (driverId) => {
+    if (!event) return;
+    setCarpoolLoading(true);
+    setCarpoolError('');
+    try {
+      const token = localStorage.getItem('token');
+      await axios.patch(
+        `${process.env.REACT_APP_API_URL}/events/${event._id}/carpool/pick-driver`,
+        { driverId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setDriverPickerOpen(false);
+      await fetchEvent(event._id);
+    } catch (err) {
+      setCarpoolError(err.response?.data?.message || 'Fehler beim Auswählen des Fahrers');
+    } finally {
+      setCarpoolLoading(false);
+    }
+  };
+
+  // Carpool display helpers
+  const carPool = event?.carPool;
+  const myUserId = user?._id;
+
+  // Determine current user's carpool role from event data
+  const myDriverEntry = carPool?.drivers?.find(d =>
+    (d.player?._id || d.player)?.toString() === myUserId?.toString()
+  );
+  const isRegisteredDriver = !!myDriverEntry;
+  const isRegisteredPassenger = carPool?.passengers?.some(p =>
+    (p?._id || p)?.toString() === myUserId?.toString()
+  );
+  const isRegisteredInCarpool = isRegisteredDriver || isRegisteredPassenger;
+
+  // Find my assigned driver (if passenger)
+  const myAssignedDriver = isRegisteredPassenger
+    ? carPool?.drivers?.find(d =>
+        d.passengers?.some(p => (p?._id || p)?.toString() === myUserId?.toString())
+      )
+    : null;
+
+  // Available drivers for re-picking (has remaining capacity, is not me)
+  const availableDriversForPick = carPool?.drivers?.filter(d =>
+    (d.player?._id || d.player)?.toString() !== myUserId?.toString() &&
+    d.seats - (d.passengers?.length || 0) > 0
+  ) || [];
 
   const formatEventDate = (startTime, endTime) => {
     if (!startTime || !endTime) return '';
@@ -576,6 +679,217 @@ const EventDetail = () => {
             </>
           )}
         </Box>
+        )}
+
+        {/* Car Pool Section — Game events only, attending players only */}
+        {event?.type === 'Game' && userStatus?.status === 'attending' && carPool !== undefined && (
+          <Box sx={{ mt: 3 }}>
+            <Divider sx={{ mb: 2 }} />
+            <Typography variant="h6" gutterBottom>
+              Fahrgemeinschaft
+            </Typography>
+
+            {carpoolError && (
+              <Alert severity="error" sx={{ mb: 2 }} onClose={() => setCarpoolError('')}>
+                {carpoolError}
+              </Alert>
+            )}
+
+            {/* Pre-finalization: full registration list visible to all */}
+            {!carPool?.finalized && (
+              <>
+                {/* Who has registered so far */}
+                {(carPool?.drivers?.length > 0 || carPool?.passengers?.length > 0) && (
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Registriert:
+                    </Typography>
+                    {carPool.drivers?.map(d => (
+                      <Chip
+                        key={(d.player?._id || d.player)?.toString()}
+                        label={`${d.player?.name || 'Fahrer'} (Fahrer, ${d.seats - (d.passengers?.length || 0)} Plätze frei)`}
+                        color="primary"
+                        size="small"
+                        sx={{ mr: 0.5, mb: 0.5 }}
+                      />
+                    ))}
+                    {carPool.passengers?.map(p => (
+                      <Chip
+                        key={(p?._id || p)?.toString()}
+                        label={p?.name || 'Mitfahrer'}
+                        color="default"
+                        size="small"
+                        sx={{ mr: 0.5, mb: 0.5 }}
+                      />
+                    ))}
+                  </Box>
+                )}
+
+                {/* Own registration form */}
+                {!isRegisteredInCarpool ? (
+                  <Box>
+                    <FormControl component="fieldset" sx={{ mb: 2 }}>
+                      <FormLabel component="legend">Deine Rolle</FormLabel>
+                      <RadioGroup row value={carpoolRole} onChange={(e) => setCarpoolRole(e.target.value)}>
+                        <FormControlLabel value="driver" control={<Radio />} label="Fahrer" />
+                        <FormControlLabel value="passenger" control={<Radio />} label="Mitfahrer" />
+                      </RadioGroup>
+                    </FormControl>
+
+                    {carpoolRole === 'driver' && (
+                      <Box sx={{ mb: 2 }}>
+                        <TextField
+                          label="Freie Plätze"
+                          type="number"
+                          size="small"
+                          inputProps={{ min: 1, max: 9 }}
+                          value={carpoolSeats}
+                          onChange={(e) => setCarpoolSeats(parseInt(e.target.value) || 1)}
+                          sx={{ mr: 2, width: 140 }}
+                        />
+                        <TextField
+                          label="Hinweis (optional)"
+                          size="small"
+                          placeholder="z.B. Treffpunkt, Abfahrtszeit..."
+                          value={carpoolNote}
+                          onChange={(e) => setCarpoolNote(e.target.value)}
+                          sx={{ width: 260 }}
+                        />
+                      </Box>
+                    )}
+
+                    <Button
+                      variant="contained"
+                      disabled={!carpoolRole || carpoolLoading}
+                      onClick={handleCarpoolRegister}
+                      size="small"
+                    >
+                      {carpoolLoading ? <CircularProgress size={18} sx={{ mr: 1 }} /> : null}
+                      Registrieren
+                    </Button>
+                  </Box>
+                ) : (
+                  <Box>
+                    {isRegisteredDriver && (
+                      <Alert severity="success" sx={{ mb: 1 }}>
+                        Du bist als Fahrer registriert ({myDriverEntry.seats} Plätze,{' '}
+                        {myDriverEntry.seats - (myDriverEntry.passengers?.length || 0)} frei)
+                        {myDriverEntry.note && ` — ${myDriverEntry.note}`}
+                      </Alert>
+                    )}
+                    {isRegisteredPassenger && (
+                      <Alert severity="info" sx={{ mb: 1 }}>
+                        {myAssignedDriver
+                          ? `Du fährst mit ${myAssignedDriver.player?.name || 'einem Fahrer'} mit`
+                          : availableDriversForPick.length === 0
+                            ? 'Kein Fahrer verfügbar — du stehst auf der Warteliste'
+                            : 'Du bist als Mitfahrer registriert (noch kein Fahrer zugeteilt)'}
+                      </Alert>
+                    )}
+                    <Box sx={{ mt: 1 }}>
+                      {isRegisteredPassenger && availableDriversForPick.length > 0 && (
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => setDriverPickerOpen(true)}
+                          sx={{ mr: 1 }}
+                        >
+                          Fahrer wechseln
+                        </Button>
+                      )}
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        size="small"
+                        disabled={carpoolLoading}
+                        onClick={handleCarpoolWithdraw}
+                      >
+                        Abmelden
+                      </Button>
+                    </Box>
+                  </Box>
+                )}
+              </>
+            )}
+
+            {/* Post-finalization: personalized assignment view */}
+            {carPool?.finalized && (
+              <Box>
+                <Alert severity="success" sx={{ mb: 2 }}>
+                  Fahrgemeinschaft wurde abgeschlossen.
+                </Alert>
+                {isRegisteredDriver && (
+                  <Box>
+                    <Typography variant="subtitle2" gutterBottom>Deine Mitfahrer:</Typography>
+                    {myDriverEntry?.passengers?.length > 0 ? (
+                      myDriverEntry.passengers.map(p => (
+                        <Chip
+                          key={(p?._id || p)?.toString()}
+                          label={p?.name || 'Mitfahrer'}
+                          size="small"
+                          sx={{ mr: 0.5, mb: 0.5 }}
+                        />
+                      ))
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">Keine Mitfahrer zugeteilt.</Typography>
+                    )}
+                  </Box>
+                )}
+                {isRegisteredPassenger && (
+                  <Box>
+                    {myAssignedDriver ? (
+                      <>
+                        <Typography variant="subtitle2" gutterBottom>
+                          Du fährst mit: <strong>{myAssignedDriver.player?.name}</strong>
+                        </Typography>
+                        {myAssignedDriver.note && (
+                          <Typography variant="body2" color="text.secondary">
+                            Hinweis: {myAssignedDriver.note}
+                          </Typography>
+                        )}
+                      </>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        Dir wurde kein Auto zugeteilt. Wende dich an den Trainer.
+                      </Typography>
+                    )}
+                  </Box>
+                )}
+                {!isRegisteredInCarpool && (
+                  <Typography variant="body2" color="text.secondary">
+                    Du hast dich nicht für die Fahrgemeinschaft registriert.
+                  </Typography>
+                )}
+              </Box>
+            )}
+
+            {/* Driver picker dialog */}
+            <Dialog open={driverPickerOpen} onClose={() => setDriverPickerOpen(false)}>
+              <DialogTitle>Fahrer auswählen</DialogTitle>
+              <DialogContent>
+                <List>
+                  {availableDriversForPick.map(d => (
+                    <ListItem
+                      key={(d.player?._id || d.player)?.toString()}
+                      button
+                      onClick={() => handlePickDriver(d.player?._id || d.player)}
+                    >
+                      <ListItemAvatar>
+                        <Avatar>{(d.player?.name || 'F')[0]}</Avatar>
+                      </ListItemAvatar>
+                      <ListItemText
+                        primary={d.player?.name || 'Fahrer'}
+                        secondary={`${d.seats - (d.passengers?.length || 0)} Plätze frei`}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setDriverPickerOpen(false)}>Abbrechen</Button>
+              </DialogActions>
+            </Dialog>
+          </Box>
         )}
       </Paper>
       

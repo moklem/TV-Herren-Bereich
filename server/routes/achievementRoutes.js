@@ -94,7 +94,7 @@ router.get('/next/:playerId', protect, async (req, res) => {
     }
 
     // Get player data for position-specific checks
-    const player = await User.findById(playerId).select('position');
+    const player = await User.findById(playerId).select('position').lean();
     const playerData = { position: player?.position };
 
     const nextBadges = await AchievementService.getNextAchievableBadges(
@@ -211,7 +211,7 @@ router.get('/leaderboard/:teamId', protect, async (req, res) => {
     const { teamId } = req.params;
     
     // Get all team members
-    const teamMembers = await User.find({ teams: teamId }).select('_id name');
+    const teamMembers = await User.find({ teams: teamId }).select('_id name').lean();
     
     const leaderboard = [];
     

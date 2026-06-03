@@ -112,6 +112,14 @@ const EventDetail = () => {
     hoursBeforeEvent: 24
   });
 
+  // Car pool state
+  const [carpoolAssignOpen, setCarpoolAssignOpen] = useState(false);
+  const [carpoolAssignPassengerId, setCarpoolAssignPassengerId] = useState(null);
+  const [carpoolFinalizeWarningOpen, setCarpoolFinalizeWarningOpen] = useState(false);
+  const [carpoolLoading, setCarpoolLoading] = useState(false);
+  const [carpoolError, setCarpoolError] = useState('');
+  const [carpoolNoteEdits, setCarpoolNoteEdits] = useState({});
+
 useEffect(() => {
   let mounted = true;
   
@@ -455,12 +463,104 @@ const handleInvitePlayer = async (playerId) => {
   try {
     const updatedEvent = await invitePlayer(id, playerId);
     setEvent(updatedEvent);
-    
+
     // Remove from uninvited lists
     setUninvitedPlayers(prev => prev.filter(p => p._id !== playerId));
     setUninvitedTeamPlayers(prev => prev.filter(p => p._id !== playerId));
   } catch (error) {
     console.error('Error inviting player:', error);
+  }
+};
+
+const handleCarpoolAssign = async (passengerId, driverId) => {
+  setCarpoolLoading(true);
+  setCarpoolError('');
+  try {
+    const token = localStorage.getItem('token');
+    await axios.patch(
+      `${process.env.REACT_APP_API_URL}/events/${id}/carpool/assign`,
+      { passengerId, driverId },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    setCarpoolAssignOpen(false);
+    setCarpoolAssignPassengerId(null);
+    await fetchEvent(id);
+  } catch (err) {
+    setCarpoolError(err.response?.data?.message || 'Fehler beim Zuweisen');
+  } finally {
+    setCarpoolLoading(false);
+  }
+};
+
+const handleCarpoolFinalize = async () => {
+  const carPool = event?.carPool;
+  if (!carPool) return;
+
+  // Count unassigned passengers
+  const assignedPassengerIds = new Set(
+    (carPool.drivers || []).flatMap(d =>
+      (d.passengers || []).map(p => (p?._id || p)?.toString())
+    )
+  );
+  const unassignedCount = (carPool.passengers || []).filter(
+    p => !assignedPassengerIds.has((p?._id || p)?.toString())
+  ).length;
+
+  if (unassignedCount > 0 && !carpoolFinalizeWarningOpen) {
+    setCarpoolFinalizeWarningOpen(true);
+    return;
+  }
+
+  setCarpoolFinalizeWarningOpen(false);
+  setCarpoolLoading(true);
+  setCarpoolError('');
+  try {
+    const token = localStorage.getItem('token');
+    await axios.post(
+      `${process.env.REACT_APP_API_URL}/events/${id}/carpool/finalize`,
+      {},
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    await fetchEvent(id);
+  } catch (err) {
+    setCarpoolError(err.response?.data?.message || 'Fehler beim Abschließen der Fahrgemeinschaft');
+  } finally {
+    setCarpoolLoading(false);
+  }
+};
+
+const handleCarpoolReopen = async () => {
+  setCarpoolLoading(true);
+  setCarpoolError('');
+  try {
+    const token = localStorage.getItem('token');
+    await axios.post(
+      `${process.env.REACT_APP_API_URL}/events/${id}/carpool/reopen`,
+      {},
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    await fetchEvent(id);
+  } catch (err) {
+    setCarpoolError(err.response?.data?.message || 'Fehler beim Öffnen der Fahrgemeinschaft');
+  } finally {
+    setCarpoolLoading(false);
+  }
+};
+
+const handleCarpoolNoteSave = async (driverId) => {
+  const note = carpoolNoteEdits[driverId] ?? '';
+  try {
+    const token = localStorage.getItem('token');
+    await axios.patch(
+      `${process.env.REACT_APP_API_URL}/events/${id}/carpool/drivers/${driverId}/note`,
+      { note },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    // Remove the local draft so the card reverts to displaying the server value
+    setCarpoolNoteEdits(prev => { const next = { ...prev }; delete next[driverId]; return next; });
+    await fetchEvent(id);
+  } catch (err) {
+    setCarpoolError(err.response?.data?.message || 'Fehler beim Speichern der Notiz');
   }
 };
 
@@ -1053,6 +1153,210 @@ const getAllInvitedPlayers = () => {
         )}
 
       </Paper>
+
+      {/* Car Pool Section — Game events only */}
+      {event.type === 'Game' && (
+        <Box sx={{ mt: 3 }}>
+          <Divider sx={{ mb: 2 }} />
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Typography variant="h6">
+              Fahrgemeinschaft
+              {event.carPool?.finalized && (
+                <Chip label="Abgeschlossen" color="success" size="small" sx={{ ml: 1 }} />
+              )}
+            </Typography>
+            {!event.carPool?.finalized ? (
+              <Button
+                variant="contained"
+                color="primary"
+                size="small"
+                disabled={carpoolLoading}
+                onClick={handleCarpoolFinalize}
+              >
+                {carpoolLoading ? <CircularProgress size={16} sx={{ mr: 1 }} /> : null}
+                Abschließen
+              </Button>
+            ) : (
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={carpoolLoading}
+                onClick={handleCarpoolReopen}
+              >
+                Fahrgemeinschaft öffnen
+              </Button>
+            )}
+          </Box>
+
+          {carpoolError && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setCarpoolError('')}>
+              {carpoolError}
+            </Alert>
+          )}
+
+          {/* Two-column overview: drivers (left) + unassigned passengers (right) */}
+          {(() => {
+            const carPool = event.carPool || { drivers: [], passengers: [], finalized: false };
+            const assignedPassengerIds = new Set(
+              (carPool.drivers || []).flatMap(d =>
+                (d.passengers || []).map(p => (p?._id || p)?.toString())
+              )
+            );
+            const unassignedPassengers = (carPool.passengers || []).filter(
+              p => !assignedPassengerIds.has((p?._id || p)?.toString())
+            );
+
+            return (
+              <Grid container spacing={2}>
+                {/* Left column: Drivers */}
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    Fahrer ({(carPool.drivers || []).length})
+                  </Typography>
+                  {carPool.drivers?.length === 0 && (
+                    <Typography variant="body2" color="text.secondary">Noch keine Fahrer registriert.</Typography>
+                  )}
+                  {(carPool.drivers || []).map(d => {
+                    const driverName = d.player?.name || 'Fahrer';
+                    const driverId = (d.player?._id || d.player)?.toString();
+                    const freeSeats = d.seats - (d.passengers?.length || 0);
+                    return (
+                      <Card key={driverId} variant="outlined" sx={{ mb: 1 }}>
+                        <CardContent sx={{ py: 1, '&:last-child': { pb: 1 } }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Typography variant="body2" fontWeight="bold">{driverName}</Typography>
+                            <Chip
+                              label={`${freeSeats}/${d.seats} frei`}
+                              size="small"
+                              color={freeSeats > 0 ? 'success' : 'default'}
+                            />
+                          </Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                            <TextField
+                              size="small"
+                              variant="standard"
+                              placeholder="Notiz (optional)"
+                              value={carpoolNoteEdits[driverId] !== undefined ? carpoolNoteEdits[driverId] : (d.note || '')}
+                              onChange={e => setCarpoolNoteEdits(prev => ({ ...prev, [driverId]: e.target.value }))}
+                              onBlur={() => handleCarpoolNoteSave(driverId)}
+                              inputProps={{ style: { fontSize: '0.75rem' } }}
+                              sx={{ flex: 1 }}
+                            />
+                          </Box>
+                          {d.passengers?.length > 0 && (
+                            <Box sx={{ mt: 0.5 }}>
+                              {d.passengers.map(p => (
+                                <Chip
+                                  key={(p?._id || p)?.toString()}
+                                  label={p?.name || 'Mitfahrer'}
+                                  size="small"
+                                  sx={{ mr: 0.5, mb: 0.5 }}
+                                  onClick={!carPool.finalized ? () => {
+                                    setCarpoolAssignPassengerId((p?._id || p)?.toString());
+                                    setCarpoolAssignOpen(true);
+                                  } : undefined}
+                                />
+                              ))}
+                            </Box>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </Grid>
+
+                {/* Right column: Unassigned passengers */}
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    Nicht zugewiesen ({unassignedPassengers.length})
+                  </Typography>
+                  {unassignedPassengers.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">Alle Mitfahrer sind zugewiesen.</Typography>
+                  ) : (
+                    unassignedPassengers.map(p => (
+                      <Chip
+                        key={(p?._id || p)?.toString()}
+                        label={p?.name || 'Mitfahrer'}
+                        size="small"
+                        color="warning"
+                        sx={{ mr: 0.5, mb: 0.5 }}
+                        onClick={!carPool.finalized ? () => {
+                          setCarpoolAssignPassengerId((p?._id || p)?.toString());
+                          setCarpoolAssignOpen(true);
+                        } : undefined}
+                      />
+                    ))
+                  )}
+                </Grid>
+              </Grid>
+            );
+          })()}
+
+          {/* Assign passenger to driver dialog */}
+          <Dialog open={carpoolAssignOpen} onClose={() => setCarpoolAssignOpen(false)}>
+            <DialogTitle>Mitfahrer zuweisen</DialogTitle>
+            <DialogContent>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                Wähle einen Fahrer für diesen Mitfahrer:
+              </Typography>
+              <List>
+                {(event.carPool?.drivers || []).map(d => {
+                  const driverName = d.player?.name || 'Fahrer';
+                  const driverId = (d.player?._id || d.player)?.toString();
+                  const freeSeats = d.seats - (d.passengers?.length || 0);
+                  return (
+                    <ListItem
+                      key={driverId}
+                      button
+                      onClick={() => handleCarpoolAssign(carpoolAssignPassengerId, driverId)}
+                    >
+                      <ListItemAvatar>
+                        <Avatar>{driverName[0]}</Avatar>
+                      </ListItemAvatar>
+                      <ListItemText
+                        primary={driverName}
+                        secondary={`${freeSeats}/${d.seats} Plätze frei`}
+                      />
+                    </ListItem>
+                  );
+                })}
+              </List>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setCarpoolAssignOpen(false)}>Abbrechen</Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* Finalize warning dialog — shown when unassigned passengers exist */}
+          <Dialog open={carpoolFinalizeWarningOpen} onClose={() => setCarpoolFinalizeWarningOpen(false)}>
+            <DialogTitle>Fahrgemeinschaft abschließen?</DialogTitle>
+            <DialogContent>
+              {(() => {
+                const carPool = event.carPool || { drivers: [], passengers: [] };
+                const assignedIds = new Set(
+                  (carPool.drivers || []).flatMap(d =>
+                    (d.passengers || []).map(p => (p?._id || p)?.toString())
+                  )
+                );
+                const unassignedCount = (carPool.passengers || []).filter(
+                  p => !assignedIds.has((p?._id || p)?.toString())
+                ).length;
+                return (
+                  <Alert severity="warning">
+                    {unassignedCount} Mitfahrer {unassignedCount === 1 ? 'ist' : 'sind'} noch keinem Fahrer zugewiesen. Trotzdem abschließen?
+                  </Alert>
+                );
+              })()}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setCarpoolFinalizeWarningOpen(false)}>Abbrechen</Button>
+              <Button variant="contained" color="warning" onClick={handleCarpoolFinalize}>
+                Trotzdem abschließen
+              </Button>
+            </DialogActions>
+          </Dialog>
+        </Box>
+      )}
 
       {/* Add Guest Dialog */}
       <Dialog 

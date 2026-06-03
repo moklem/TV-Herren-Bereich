@@ -49,7 +49,11 @@ import {
   TableRow,
   Stepper,
   Step,
-  StepLabel
+  StepLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
@@ -59,10 +63,12 @@ import { AuthContext } from '../../context/AuthContext';
 import { EventContext } from '../../context/EventContext';
 import { TeamContext } from '../../context/TeamContext';
 
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024; // 10 MB — must match server constant
+
 const ImportMatchesPDF = () => {
   const navigate = useNavigate();
   const { user } = useContext(AuthContext);
-  const { createEvent, loading: eventLoading } = useContext(EventContext);
+  const { createEvent, loading: eventLoading, events } = useContext(EventContext);
   const { teams, fetchTeams, loading: teamLoading } = useContext(TeamContext);
 
   const [activeStep, setActiveStep] = useState(0);
@@ -86,6 +92,9 @@ const ImportMatchesPDF = () => {
   const [customMessage, setCustomMessage] = useState('');
   const [selectedPlayers, setSelectedPlayers] = useState([]);
   const [isOpenAccess, setIsOpenAccess] = useState(false);
+  const [selectedMatchIndices, setSelectedMatchIndices] = useState([]);
+  const [duplicateWarning, setDuplicateWarning] = useState(null);
+  const [duplicateAction, setDuplicateAction] = useState(null); // 'skip' | 'overwrite' | null
 
   const steps = ['PDF hochladen', 'Team auswählen', 'Einstellungen', 'Bestätigen'];
 
@@ -100,13 +109,9 @@ const ImportMatchesPDF = () => {
   // Identify which teams the user coaches
   useEffect(() => {
     if (teams.length > 0 && user) {
-      console.log('Filtering coach teams. Total teams:', teams.length);
-      console.log('Current user ID:', user._id);
-
       const coachTeams = teams.filter(team => {
         // Defensive check: ensure team.coaches exists and is an array
         if (!team.coaches || !Array.isArray(team.coaches)) {
-          console.log(`Team ${team.name} has no coaches array`);
           return false;
         }
 
@@ -115,14 +120,9 @@ const ImportMatchesPDF = () => {
           String(coach._id) === String(user._id)
         );
 
-        if (isCoach) {
-          console.log(`User is coach of team: ${team.name}`);
-        }
-
         return isCoach;
       });
 
-      console.log('Filtered coach teams:', coachTeams.length, coachTeams.map(t => t.name));
       setUserCoachTeams(coachTeams);
     }
   }, [teams, user]);
@@ -175,14 +175,32 @@ const ImportMatchesPDF = () => {
     }
   }, [selectedTeamName, uploadedMatches]);
 
+  // Reset selection when filtered matches change (e.g. team switch)
+  useEffect(() => {
+    setSelectedMatchIndices(filteredMatches.map((_, idx) => idx));
+  }, [filteredMatches]);
+
+  // Re-trigger handleCreateEvents after coach makes duplicate decision
+  useEffect(() => {
+    if (duplicateAction !== null && !duplicateWarning) {
+      handleCreateEvents();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duplicateAction, duplicateWarning]);
+
   const handleFileChange = (event) => {
     const file = event.target.files[0];
-    if (file && file.type === 'application/pdf') {
-      setPdfFile(file);
-      setUploadError('');
-    } else {
+    if (!file) return;
+    if (file.type !== 'application/pdf') {
       setUploadError('Bitte wählen Sie eine gültige PDF-Datei aus');
+      return;
     }
+    if (file.size > MAX_UPLOAD_SIZE) {
+      setUploadError('Die Datei ist zu groß. Maximale Dateigröße: 10 MB.');
+      return;
+    }
+    setPdfFile(file);
+    setUploadError('');
   };
 
   const handleUploadPDF = async () => {
@@ -210,24 +228,6 @@ const ImportMatchesPDF = () => {
         }
       );
 
-      console.log('PDF upload response:', response.data);
-      console.log('Matches found:', response.data.matches.length);
-      console.log('Teams extracted:', response.data.teams);
-
-      // Log debug information if available
-      if (response.data.debug) {
-        console.log('=== PDF DEBUG INFO ===');
-        console.log('PDF Text Length:', response.data.debug.pdfTextLength);
-        console.log('PDF Text Preview (first 1000 chars):', response.data.debug.pdfTextPreview);
-        console.log('PDF Middle Section Sample:', response.data.debug.fullPdfSample);
-        console.log('Total Lines:', response.data.debug.totalLines);
-        console.log('Matched Lines:', response.data.debug.matchedLines);
-        console.log('Unmatched Lines Sample:', response.data.debug.unmatchedLinesSample);
-        console.log('First 30 Lines:', response.data.debug.firstFewLines);
-        console.log('Lines around 100:', response.data.debug.linesAround100);
-        console.log('=== END DEBUG INFO ===');
-      }
-
       setUploadedMatches(response.data.matches);
       setAvailableTeams(response.data.teams);
 
@@ -239,16 +239,9 @@ const ImportMatchesPDF = () => {
       }
     } catch (error) {
       const errorMessage = error.response?.data?.message || 'Fehler beim Hochladen der PDF';
-      const debugInfo = error.response?.data?.debugInfo;
 
       console.error('Upload error:', error);
       console.error('Error response:', error.response?.data);
-
-      if (debugInfo) {
-        console.log('PDF Debug Info:');
-        console.log('Text preview:', debugInfo.textPreview);
-        console.log('Text length:', debugInfo.textLength);
-      }
 
       setUploadError(errorMessage);
     } finally {
@@ -274,13 +267,52 @@ const ImportMatchesPDF = () => {
   };
 
   const handleCreateEvents = async () => {
-    if (filteredMatches.length === 0) {
-      setUploadError('Keine Spiele zum Erstellen');
+    const matchesToCreate = filteredMatches.filter((_, idx) => selectedMatchIndices.includes(idx));
+
+    if (matchesToCreate.length === 0) {
+      setUploadError('Keine Spiele zum Erstellen ausgewählt');
       return;
     }
 
     if (!selectedTeamId) {
       setUploadError('Bitte wählen Sie ein Team aus');
+      return;
+    }
+
+    // Duplicate detection — only run if we have not yet made a decision
+    if (duplicateAction === null) {
+      const existingForTeam = (events || []).filter(e =>
+        e.team?._id === selectedTeamId ||
+        (e.teams || []).some(t => (t._id || t) === selectedTeamId)
+      );
+
+      const duplicates = matchesToCreate.filter(matchDay => {
+        const [day, month, year] = matchDay.datum.split('.');
+        return existingForTeam.some(e => {
+          const d = new Date(e.startTime);
+          return d.getFullYear() === parseInt(year) &&
+                 (d.getMonth() + 1) === parseInt(month) &&
+                 d.getDate() === parseInt(day);
+        });
+      });
+
+      if (duplicates.length > 0) {
+        setDuplicateWarning({ duplicates, matchesToCreate });
+        return; // Pause until coach decides
+      }
+    }
+
+    // Determine final matches based on duplicate decision
+    let finalMatches = matchesToCreate;
+    if (duplicateAction === 'skip' && duplicateWarning) {
+      const dupDates = duplicateWarning.duplicates.map(m => m.datum);
+      finalMatches = matchesToCreate.filter(m => !dupDates.includes(m.datum));
+    }
+
+    if (finalMatches.length === 0) {
+      setUploadError('Alle ausgewählten Spiele existieren bereits. Es wurden keine neuen Termine erstellt.');
+      setDuplicateWarning(null);
+      setDuplicateAction(null);
       return;
     }
 
@@ -290,14 +322,12 @@ const ImportMatchesPDF = () => {
     try {
       const createdEvents = [];
 
-      for (const matchDay of filteredMatches) {
-        // Parse date and time
+      for (const matchDay of finalMatches) {
         const [day, month, year] = matchDay.datum.split('.');
         const [hours, minutes] = matchDay.zeit.split(':');
         const startTime = new Date(year, month - 1, day, hours, minutes);
         const endTime = new Date(startTime.getTime() + 2 * 60 * 60 * 1000); // +2 hours
 
-        // Create voting deadline if set (relative to start time)
         let matchVotingDeadline = null;
         if (votingDeadline) {
           const offset = votingDeadline.getTime() - new Date().getTime();
@@ -328,13 +358,13 @@ const ImportMatchesPDF = () => {
         createdEvents.push(result);
       }
 
-      // Navigate to events page
       navigate('/coach/events');
     } catch (error) {
       setUploadError(error.message || 'Fehler beim Erstellen der Termine');
-      console.error('Create events error:', error);
     } finally {
       setUploading(false);
+      setDuplicateWarning(null);
+      setDuplicateAction(null);
     }
   };
 
@@ -387,16 +417,20 @@ const ImportMatchesPDF = () => {
         >
           <ArrowBack />
         </IconButton>
-        <Typography variant="h4" component="h1">
+        <Typography variant="h5" component="h1">
           Spielplan importieren (PDF)
         </Typography>
       </Box>
 
-      <Paper elevation={3} sx={{ p: 3 }}>
-        <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
+      <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 } }}>
+        <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
           {steps.map((label) => (
             <Step key={label}>
-              <StepLabel>{label}</StepLabel>
+              <StepLabel
+                sx={{ '& .MuiStepLabel-label': { display: { xs: 'none', sm: 'block' } } }}
+              >
+                {label}
+              </StepLabel>
             </Step>
           ))}
         </Stepper>
@@ -451,6 +485,7 @@ const ImportMatchesPDF = () => {
                 onClick={handleUploadPDF}
                 disabled={!pdfFile || uploading}
                 startIcon={uploading ? <CircularProgress size={20} /> : <CloudUpload />}
+                sx={{ width: { xs: '100%', sm: 'auto' } }}
               >
                 {uploading ? 'Hochladen...' : 'PDF hochladen und analysieren'}
               </Button>
@@ -509,12 +544,22 @@ const ImportMatchesPDF = () => {
             {selectedTeamName && filteredMatches.length > 0 && (
               <Box sx={{ mt: 3 }}>
                 <Typography variant="subtitle1" gutterBottom>
-                  Gefilterte Spieltage: {filteredMatches.length}
+                  Gefilterte Spieltage: {filteredMatches.length} ({selectedMatchIndices.length} ausgewählt)
                 </Typography>
-                <TableContainer component={Paper} variant="outlined" sx={{ mt: 2 }}>
+                <TableContainer component={Paper} variant="outlined" sx={{ mt: 2, overflowX: 'auto' }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
+                        <TableCell padding="checkbox">
+                          <Checkbox
+                            checked={selectedMatchIndices.length === filteredMatches.length && filteredMatches.length > 0}
+                            indeterminate={selectedMatchIndices.length > 0 && selectedMatchIndices.length < filteredMatches.length}
+                            onChange={(e) => {
+                              if (e.target.checked) setSelectedMatchIndices(filteredMatches.map((_, i) => i));
+                              else setSelectedMatchIndices([]);
+                            }}
+                          />
+                        </TableCell>
                         <TableCell>Datum</TableCell>
                         <TableCell>Zeit</TableCell>
                         <TableCell>Gegner</TableCell>
@@ -523,7 +568,19 @@ const ImportMatchesPDF = () => {
                     </TableHead>
                     <TableBody>
                       {filteredMatches.map((match, index) => (
-                        <TableRow key={index}>
+                        <TableRow key={index} selected={selectedMatchIndices.includes(index)}>
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={selectedMatchIndices.includes(index)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedMatchIndices(prev => [...prev, index]);
+                                } else {
+                                  setSelectedMatchIndices(prev => prev.filter(i => i !== index));
+                                }
+                              }}
+                            />
+                          </TableCell>
                           <TableCell>{match.datum}</TableCell>
                           <TableCell>{match.zeit}</TableCell>
                           <TableCell>{match.opponent}</TableCell>
@@ -541,7 +598,7 @@ const ImportMatchesPDF = () => {
               <Button
                 variant="contained"
                 onClick={handleNext}
-                disabled={!selectedTeamName || !selectedTeamId || filteredMatches.length === 0}
+                disabled={!selectedTeamName || !selectedTeamId || filteredMatches.length === 0 || selectedMatchIndices.length === 0}
               >
                 Weiter
               </Button>
@@ -805,6 +862,30 @@ const ImportMatchesPDF = () => {
           </Box>
         )}
       </Paper>
+
+      <Dialog open={Boolean(duplicateWarning)} onClose={() => { setDuplicateWarning(null); setDuplicateAction(null); }}>
+        <DialogTitle>Doppelte Termine gefunden</DialogTitle>
+        <DialogContent>
+          <Typography>
+            {duplicateWarning?.duplicates.length} {duplicateWarning?.duplicates.length === 1 ? 'Spiel existiert' : 'Spiele existieren'} bereits für dieses Team.
+            Möchten Sie diese Spiele überspringen oder trotzdem importieren?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setDuplicateAction('skip');
+            setDuplicateWarning(null);
+          }}>
+            Überspringen
+          </Button>
+          <Button color="warning" onClick={() => {
+            setDuplicateAction('overwrite');
+            setDuplicateWarning(null);
+          }}>
+            Trotzdem importieren
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
