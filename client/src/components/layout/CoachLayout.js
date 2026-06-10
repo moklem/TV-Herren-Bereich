@@ -18,7 +18,8 @@ import {
   GroupAdd,
   PersonAdd,
   Home,
-  Refresh
+  Refresh,
+  Gavel
 } from '@mui/icons-material';
 import {
   AppBar,
@@ -183,6 +184,16 @@ const CoachLayout = ({ children }) => {
           </ListItemIcon>
           <ListItemText primary="Attribute" />
         </ListItem>
+        <ListItem
+          button
+          onClick={() => handleNavigate('/coach/penalties')}
+          sx={{ cursor: 'pointer' }}
+        >
+          <ListItemIcon>
+            <Gavel />
+          </ListItemIcon>
+          <ListItemText primary="Strafenkatalog" />
+        </ListItem>
       </List>
       <Divider />
       <List>
@@ -295,6 +306,13 @@ const CoachLayout = ({ children }) => {
                 sx={{ my: 2, color: 'white', display: 'block' }}
               >
                 Attribute
+              </Button>
+              <Button
+                component={RouterLink}
+                to="/coach/penalties"
+                sx={{ my: 2, color: 'white', display: 'block' }}
+              >
+                Strafenkatalog
               </Button>
             </Box>
 

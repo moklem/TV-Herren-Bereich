@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useState } from 'react';
 
+import axios from 'axios';
 import { useParams, useNavigate } from 'react-router-dom';
 
 import {
@@ -8,7 +9,8 @@ import {
   ArrowBack,
   SportsVolleyball,
   Email,
-  Phone
+  Phone,
+  Gavel as GavelIcon
 } from '@mui/icons-material';
 import {
   Box,
@@ -26,7 +28,12 @@ import {
   Alert,
   IconButton,
   Card,
-  CardContent
+  CardContent,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow
 } from '@mui/material';
 
 import { AuthContext } from '../../context/AuthContext';
@@ -42,6 +49,7 @@ const TeamDetail = () => {
   const [team, setTeam] = useState(null);
   const [isUserInTeam, setIsUserInTeam] = useState(false);
   const [isLoadingTeam, setIsLoadingTeam] = useState(false);
+  const [penalties, setPenalties] = useState([]);
 
   useEffect(() => {
     let mounted = true; // Add cleanup flag
@@ -56,7 +64,16 @@ const TeamDetail = () => {
         if (!mounted) return; // Don't update if component unmounted
         
         setTeam(teamData);
-        
+
+        try {
+          const token = localStorage.getItem('token');
+          const r = await axios.get(
+            `${process.env.REACT_APP_API_URL}/penalties/team/${id}/assigned`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          setPenalties(r.data);
+        } catch (_) { /* Strafen nicht verfügbar */ }
+
         // Check if user is in this team
         if (teamData && user) {
           const userInTeam = teamData.players.some(player => player._id === user._id) || 
@@ -276,6 +293,47 @@ const TeamDetail = () => {
           </Box>
         )}
       </Paper>
+
+      {penalties.length > 0 && (() => {
+        const playerTotals = {};
+        penalties.forEach(p => {
+          const pid = p.player._id;
+          if (!playerTotals[pid]) playerTotals[pid] = { name: p.player.name, open: 0, paid: 0 };
+          if (p.isPaid) playerTotals[pid].paid += p.amount;
+          else playerTotals[pid].open += p.amount;
+        });
+        const leaderboard = Object.values(playerTotals).sort((a, b) => b.open - a.open);
+        return (
+          <Paper elevation={2} sx={{ p: 3, mt: 3, mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+              <GavelIcon sx={{ mr: 1, color: 'warning.main' }} />
+              <Typography variant="h6">Strafenkatalog</Typography>
+            </Box>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Spieler</TableCell>
+                  <TableCell align="right">Offen (€)</TableCell>
+                  <TableCell align="right">Bezahlt (€)</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {leaderboard.map(pl => (
+                  <TableRow key={pl.name}>
+                    <TableCell>{pl.name}</TableCell>
+                    <TableCell align="right" sx={{ color: pl.open > 0 ? 'error.main' : 'inherit' }}>
+                      {pl.open.toFixed(2)}
+                    </TableCell>
+                    <TableCell align="right" sx={{ color: 'success.main' }}>
+                      {pl.paid.toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Paper>
+        );
+      })()}
     </Box>
   );
 };

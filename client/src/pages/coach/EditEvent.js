@@ -102,6 +102,7 @@ const EditEvent = () => {
   
   // Open access state
   const [isOpenAccess, setIsOpenAccess] = useState(false);
+  const [autoRegister, setAutoRegister] = useState(false);
   const [selectedWeekday, setSelectedWeekday] = useState(1); // Default Monday
   
   // Voting deadline state
@@ -177,6 +178,7 @@ useEffect(() => {
       setNotes(loadedEvent.notes || '');
       setTeamId(loadedEvent.team._id);
       setIsOpenAccess(loadedEvent.isOpenAccess || false);
+      setAutoRegister(loadedEvent.autoRegister || false);
       setVotingDeadline(loadedEvent.votingDeadline ? new Date(loadedEvent.votingDeadline) : null);
       setSelectedWeekday(getDay(new Date(loadedEvent.startTime)));
       
@@ -375,6 +377,7 @@ useEffect(() => {
         notes,
         invitedPlayers: isOpenAccess ? [] : selectedPlayers,
         isOpenAccess,
+        autoRegister,
         team: organizingTeamIds[0] || selectedTeamIds[0],
         teams: selectedTeamIds,
         organizingTeam: organizingTeamIds[0] || selectedTeamIds[0]|| eventData?.team?._id,
@@ -1052,6 +1055,22 @@ useEffect(() => {
                   </Box>
                 }
               />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={autoRegister}
+                    onChange={(e) => setAutoRegister(e.target.checked)}
+                    color="success"
+                  />
+                }
+                label="Alle Spieler automatisch als 'Zugesagt' eintragen"
+              />
+              <FormHelperText>
+                Spieler werden direkt als zugesagt eingetragen – sie können die Teilnahme noch absagen
+              </FormHelperText>
             </Grid>
             
             {!isOpenAccess && (

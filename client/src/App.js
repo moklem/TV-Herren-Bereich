@@ -62,6 +62,7 @@ import PlayerProgress from './pages/coach/PlayerProgress';
 import CoachTeamDetail from './pages/coach/TeamDetail';
 import CoachTeams from './pages/coach/Teams';
 import CoachPools from './pages/coach/Pools';
+import CoachPenalties from './pages/coach/Penalties';
 import ImportMatchesPDF from './pages/coach/ImportMatchesPDF';
 import Home from './pages/Home';
 import NotFound from './pages/NotFound';
@@ -436,6 +437,7 @@ const AppContent = () => {
                   <Route path="/players/create" element={<CoachCreatePlayer />} />
                   <Route path="/players/:id" element={<CoachPlayerDetail />} />
                   <Route path="/attributes" element={<CoachAttributes />} />
+                  <Route path="/penalties" element={<CoachPenalties />} />
                   <Route path="/profile" element={<Profile />} />
                 </Routes>
               </CoachLayout>
