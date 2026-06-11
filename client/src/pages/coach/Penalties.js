@@ -344,7 +344,7 @@ const Penalties = () => {
       )}
 
       {/* Catalog Entry Dialog */}
-      <Dialog open={catalogDialog} onClose={() => setCatalogDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog open={catalogDialog} onClose={() => setCatalogDialog(false)} maxWidth="sm" fullWidth disableEnforceFocus>
         <DialogTitle>{editEntry ? 'Eintrag bearbeiten' : 'Neuer Katalogeintrag'}</DialogTitle>
         <DialogContent>
           <TextField fullWidth label="Name *" value={catForm.name} onChange={e => setCatForm(p => ({ ...p, name: e.target.value }))} sx={{ mt: 2 }} />
@@ -360,7 +360,7 @@ const Penalties = () => {
       </Dialog>
 
       {/* Template Import Dialog */}
-      <Dialog open={templateDialog} onClose={() => setTemplateDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog open={templateDialog} onClose={() => setTemplateDialog(false)} maxWidth="sm" fullWidth disableEnforceFocus>
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <PlaylistAdd />
@@ -428,7 +428,7 @@ const Penalties = () => {
       </Dialog>
 
       {/* Assign Penalty Dialog */}
-      <Dialog open={assignDialog} onClose={() => setAssignDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog open={assignDialog} onClose={() => setAssignDialog(false)} maxWidth="sm" fullWidth disableEnforceFocus>
         <DialogTitle>Strafe vergeben</DialogTitle>
         <DialogContent>
           <FormControl fullWidth sx={{ mt: 2 }}>
