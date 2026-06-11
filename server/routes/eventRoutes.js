@@ -93,15 +93,16 @@ const generateRecurringEvents = (baseEvent, pattern, endDate) => {
 // @access  Private/Coach
 router.post('/', protect, coach, async (req, res) => {
   try {
-    const { 
-      title, 
-      type, 
-      startTime, 
-      endTime, 
-      location, 
+    const {
+      title,
+      type,
+      startTime,
+      endTime,
+      location,
       team,
-      teams, 
-      description, 
+      teams,
+      description,
+      notes,
       invitedPlayers,
       isOpenAccess,
       isRecurring,
@@ -111,7 +112,8 @@ router.post('/', protect, coach, async (req, res) => {
       organizingTeams,
       votingDeadline,
       notificationSettings,
-      trainingPoolAutoInvite
+      trainingPoolAutoInvite,
+      autoRegister
     } = req.body;
 
     // Validate trainingPoolAutoInvite - if poolId is empty, disable auto-invite
@@ -198,9 +200,11 @@ router.post('/', protect, coach, async (req, res) => {
       organizingTeams: organizingTeamIds,
       team: organizingTeamIds[0], // Keep for backward compatibility
       description,
+      notes,
       createdBy: req.user._id,
-      invitedPlayers: invitedPlayers || allTeamPlayers,
-      attendingPlayers: [],
+      invitedPlayers: autoRegister ? [] : (invitedPlayers || allTeamPlayers),
+      attendingPlayers: autoRegister ? (invitedPlayers || allTeamPlayers) : [],
+      autoRegister: autoRegister || false,
       declinedPlayers: [],
       unsurePlayers: [],
       playerResponses: [],
@@ -568,19 +572,20 @@ router.get('/:id', protect, async (req, res) => {
 // @access  Private/Coach
 router.put('/:id', protect, coach, async (req, res) => {
   try {
-    const { 
-      title, 
-      type, 
-      startTime, 
-      endTime, 
-      location, 
-      description, 
+    const {
+      title,
+      type,
+      startTime,
+      endTime,
+      location,
+      description,
+      notes,
       invitedPlayers,
       isOpenAccess,
       team,
       teams,
       organizingTeam,
-      organizingTeams, 
+      organizingTeams,
       updateRecurring,
       convertToRecurring,
       recurringPattern,
@@ -588,7 +593,8 @@ router.put('/:id', protect, coach, async (req, res) => {
       weekday,
       votingDeadline,
       notificationSettings,
-      trainingPoolAutoInvite
+      trainingPoolAutoInvite,
+      autoRegister
     } = req.body;
     
     // Validate trainingPoolAutoInvite - if poolId is empty, disable auto-invite
@@ -826,6 +832,7 @@ router.put('/:id', protect, coach, async (req, res) => {
         event.endTime = endTime || event.endTime;
         event.location = location || event.location;
         event.description = description !== undefined ? description : event.description;
+        if (notes !== undefined) event.notes = notes;
         if (invitedPlayers) event.invitedPlayers = invitedPlayers;
         if (isOpenAccess !== undefined) event.isOpenAccess = isOpenAccess;
         if (team) event.team = team;
@@ -835,7 +842,15 @@ router.put('/:id', protect, coach, async (req, res) => {
         if (votingDeadline !== undefined) event.votingDeadline = votingDeadline;
         if (notificationSettings) event.notificationSettings = notificationSettings;
         if (trainingPoolAutoInvite !== undefined) event.trainingPoolAutoInvite = trainingPoolAutoInvite;
-        
+        if (autoRegister !== undefined) {
+          event.autoRegister = autoRegister;
+          if (autoRegister) {
+            const toMove = event.invitedPlayers.map(p => p.toString());
+            event.attendingPlayers = [...new Set([...event.attendingPlayers.map(p => p.toString()), ...toMove])];
+            event.invitedPlayers = [];
+          }
+        }
+
         const updatedEvent = await event.save();
         
         // Schedule notifications for the updated event

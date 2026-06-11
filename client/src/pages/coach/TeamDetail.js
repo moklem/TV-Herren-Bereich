@@ -13,7 +13,8 @@ import {
   Delete,
   Add,
   Search,
-  Clear
+  Clear,
+  Gavel
 } from '@mui/icons-material';
 import {
   Box,
@@ -298,15 +299,26 @@ const TeamDetail = () => {
         </Typography>
         
         {isCoach && (
-          <Button
-            variant="outlined"
-            color="primary"
-            startIcon={<Edit />}
-            component={RouterLink}
-            to={`/coach/teams/edit/${team._id}`}
-          >
-            Bearbeiten
-          </Button>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'flex-end' }}>
+            <Button
+              variant="outlined"
+              color="primary"
+              startIcon={<Edit />}
+              component={RouterLink}
+              to={`/coach/teams/edit/${team._id}`}
+            >
+              Bearbeiten
+            </Button>
+            <Button
+              variant="outlined"
+              color="warning"
+              startIcon={<Gavel />}
+              component={RouterLink}
+              to={`/coach/penalties?team=${team._id}`}
+            >
+              Strafenkatalog
+            </Button>
+          </Box>
         )}
       </Box>
       

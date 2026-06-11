@@ -140,6 +140,11 @@ const EventSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  // Auto-register all invited players as attending
+  autoRegister: {
+    type: Boolean,
+    default: false
+  },
   // Recurring event fields
   isRecurring: {
     type: Boolean,

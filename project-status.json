@@ -34,7 +34,7 @@
       "database": "MongoDB Atlas",
       "region": "Frankfurt"
     },
-    "lastAnalyzed": "2025-10-30T10:00:00.000Z"
+    "lastAnalyzed": "2026-06-11T00:00:00.000Z"
   },
   "developmentPhase": "production",
   "completionPercentage": 99,
@@ -284,6 +284,18 @@
       ]
     },
     {
+      "category": "Penalty System",
+      "features": [
+        "PenaltyCatalog model for team-specific penalty definitions",
+        "PlayerPenalty model for assigned penalties with paid/unpaid status",
+        "Full CRUD REST API for catalog management and penalty assignment",
+        "Coach Penalties page with two tabs: Katalog and Strafen",
+        "Coach desktop and drawer navigation entries for Strafenkatalog",
+        "Player TeamDetail page shows penalty leaderboard (open/paid per player)",
+        "Auto-Anmeldung flag on events: players auto-confirmed instead of invited"
+      ]
+    },
+    {
       "category": "Attendance Tracking & Analytics",
       "features": [
         "Automatic attendance processing for events without coach feedback",
@@ -301,6 +313,22 @@
   ],
   "inProgressFeatures": [],
   "recentChanges": [
+    {
+      "timestamp": "2026-06-11T00:00:00.000Z",
+      "filesModified": [
+        "client/src/components/layout/CoachLayout.js",
+        "client/src/pages/player/TeamDetail.js"
+      ],
+      "filesAdded": [
+        "server/models/PenaltyCatalog.js",
+        "server/models/PlayerPenalty.js",
+        "server/routes/penaltyRoutes.js",
+        "client/src/pages/coach/Penalties.js"
+      ],
+      "filesDeleted": [],
+      "summary": "Completed Auto-Anmeldung and Strafenkatalog features — frontend finishing touches",
+      "impact": "Desktop navbar now shows Strafenkatalog button. Player TeamDetail page shows team penalty leaderboard. EditEvent already had FormHelperText — no change needed."
+    },
     {
       "timestamp": "2026-02-25T00:00:00.000Z",
       "filesModified": [

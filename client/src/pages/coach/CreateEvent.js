@@ -92,6 +92,7 @@ const CreateEvent = () => {
   
   // Open access state
   const [isOpenAccess, setIsOpenAccess] = useState(false);
+  const [autoRegister, setAutoRegister] = useState(false);
   const [selectedTeamIds, setSelectedTeamIds] = useState([]);
   
   // Voting deadline state
@@ -283,6 +284,7 @@ const CreateEvent = () => {
           teams: selectedTeamIds,
           organizingTeam: organizingTeamIds[0], // Keep for backward compatibility
           organizingTeams: organizingTeamIds,
+          autoRegister,
           invitedPlayers: isOpenAccess ? [] : selectedPlayers.filter(playerId => {
             // Only invite players that belong to this team
             const team = teams.find(t => t._id === teamId);
@@ -962,6 +964,22 @@ const CreateEvent = () => {
                   </Box>
                 }
               />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={autoRegister}
+                    onChange={(e) => setAutoRegister(e.target.checked)}
+                    color="success"
+                  />
+                }
+                label="Alle Spieler automatisch als 'Zugesagt' eintragen"
+              />
+              <FormHelperText>
+                Spieler werden direkt als zugesagt eingetragen – sie können die Teilnahme noch absagen
+              </FormHelperText>
             </Grid>
             
             {!isOpenAccess && (
