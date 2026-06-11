@@ -1,22 +1,40 @@
 import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
+import { useSearchParams } from 'react-router-dom';
 import {
-  Gavel, Add, Edit, Delete, CheckCircle, Cancel
+  Gavel, Add, Edit, Delete, CheckCircle, Cancel, PlaylistAdd
 } from '@mui/icons-material';
 import {
   Box, Typography, Paper, Tabs, Tab, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, IconButton, Button, Chip, CircularProgress, Alert, Dialog,
   DialogTitle, DialogContent, DialogActions, TextField, FormControl, InputLabel,
-  Select, MenuItem, Grid, Tooltip, FormHelperText
+  Select, MenuItem, Grid, Tooltip, FormHelperText, Checkbox, List, ListItem,
+  ListItemText, ListItemIcon, Divider
 } from '@mui/material';
 import { TeamContext } from '../../context/TeamContext';
 import { AuthContext } from '../../context/AuthContext';
 
 const API = process.env.REACT_APP_API_URL;
 
+const PRESET_PENALTIES = [
+  { name: 'Zu spät zum Training', description: 'Verspätetes Erscheinen beim Training', amount: 1.00 },
+  { name: 'Zu spät zum Spiel', description: 'Verspätetes Erscheinen beim Wettkampf', amount: 2.00 },
+  { name: 'Nichterscheinen ohne Abmeldung', description: 'Unentschuldigtes Fehlen beim Training', amount: 5.00 },
+  { name: 'Nichterscheinen beim Pflichtspiel', description: 'Unentschuldigtes Fehlen bei einem Meisterschaftsspiel', amount: 10.00 },
+  { name: 'Unpünktliche Abmeldung', description: 'Abmeldung weniger als 24 Stunden vorher', amount: 2.00 },
+  { name: 'Handy in der Halle', description: 'Handynutzung während Training oder Spiel', amount: 2.00 },
+  { name: 'Fehlende Sportkleidung', description: 'Kein Trikot oder unvollständige Ausrüstung', amount: 1.00 },
+  { name: 'Trikot vergessen', description: 'Trikot zum Spiel vergessen', amount: 3.00 },
+  { name: 'Schiedsrichterpflicht versäumt', description: 'Zugewiesene Schiedsrichteraufgabe nicht wahrgenommen', amount: 5.00 },
+  { name: 'Hallendienst versäumt', description: 'Auf- oder Abbau der Halle nicht geholfen', amount: 2.00 },
+  { name: 'Unhöfliches Verhalten', description: 'Respektloses Verhalten gegenüber Trainer oder Mitspielern', amount: 5.00 },
+  { name: 'Vereinsbeitrag nicht bezahlt', description: 'Offener Mitgliedsbeitrag', amount: 0.00 },
+];
+
 const Penalties = () => {
   const { teams, fetchTeams } = useContext(TeamContext);
   const { user } = useContext(AuthContext);
+  const [searchParams] = useSearchParams();
 
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [activeTab, setActiveTab] = useState(0);
@@ -33,12 +51,22 @@ const Penalties = () => {
   const [assignDialog, setAssignDialog] = useState(false);
   const [assignForm, setAssignForm] = useState({ playerId: '', catalogEntryId: '', customName: '', amount: '', note: '' });
 
+  const [templateDialog, setTemplateDialog] = useState(false);
+  const [selectedPresets, setSelectedPresets] = useState([]);
+  const [importingPresets, setImportingPresets] = useState(false);
+
   useEffect(() => { fetchTeams(); }, []);
 
   const coachTeams = teams.filter(t => t.coaches && t.coaches.some(c => (c._id || c) === user._id));
 
   useEffect(() => {
-    if (coachTeams.length > 0 && !selectedTeamId) setSelectedTeamId(coachTeams[0]._id);
+    if (coachTeams.length === 0) return;
+    const teamFromUrl = searchParams.get('team');
+    if (teamFromUrl && coachTeams.some(t => t._id === teamFromUrl)) {
+      setSelectedTeamId(teamFromUrl);
+    } else if (!selectedTeamId) {
+      setSelectedTeamId(coachTeams[0]._id);
+    }
   }, [teams]);
 
   useEffect(() => {
@@ -83,6 +111,36 @@ const Penalties = () => {
       await axios.delete(`${API}/penalties/team/${selectedTeamId}/catalog/${id}`, { headers: headers() });
       await fetchCatalog(); setSuccess('Eintrag gelöscht');
     } catch { setError('Fehler beim Löschen'); }
+  };
+
+  const importPresets = async () => {
+    if (selectedPresets.length === 0) return;
+    try {
+      setImportingPresets(true);
+      const existingNames = catalog.map(e => e.name.toLowerCase());
+      const toImport = selectedPresets.filter(p => !existingNames.includes(p.name.toLowerCase()));
+      await Promise.all(
+        toImport.map(p =>
+          axios.post(`${API}/penalties/team/${selectedTeamId}/catalog`, p, { headers: headers() })
+        )
+      );
+      await fetchCatalog();
+      const skipped = selectedPresets.length - toImport.length;
+      setSuccess(
+        skipped > 0
+          ? `${toImport.length} Einträge importiert (${skipped} übersprungen – bereits vorhanden)`
+          : `${toImport.length} Einträge importiert`
+      );
+      setTemplateDialog(false);
+      setSelectedPresets([]);
+    } catch { setError('Fehler beim Importieren der Vorlagen'); }
+    finally { setImportingPresets(false); }
+  };
+
+  const togglePreset = (preset) => {
+    setSelectedPresets(prev =>
+      prev.includes(preset) ? prev.filter(p => p !== preset) : [...prev, preset]
+    );
   };
 
   const assignPenalty = async () => {
@@ -168,7 +226,10 @@ const Penalties = () => {
 
             {activeTab === 0 && (
               <Box sx={{ p: 3 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mb: 2 }}>
+                  <Button variant="outlined" startIcon={<PlaylistAdd />} onClick={() => { setSelectedPresets([]); setTemplateDialog(true); }}>
+                    Vorlage laden
+                  </Button>
                   <Button variant="contained" startIcon={<Add />} onClick={() => { setEditEntry(null); setCatForm({ name: '', description: '', amount: '' }); setCatalogDialog(true); }}>
                     Eintrag hinzufügen
                   </Button>
@@ -283,6 +344,74 @@ const Penalties = () => {
           <Button onClick={() => setCatalogDialog(false)}>Abbrechen</Button>
           <Button variant="contained" onClick={saveCatalogEntry} disabled={loading || !catForm.name || !catForm.amount}>
             {loading ? <CircularProgress size={20} /> : 'Speichern'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Template Import Dialog */}
+      <Dialog open={templateDialog} onClose={() => setTemplateDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PlaylistAdd />
+            Vorlage laden
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Wähle Einträge aus der Standardvorlage aus. Bereits vorhandene Einträge werden übersprungen.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+            <Button size="small" onClick={() => setSelectedPresets([...PRESET_PENALTIES])}>
+              Alle auswählen
+            </Button>
+            <Button size="small" onClick={() => setSelectedPresets([])}>
+              Keine
+            </Button>
+          </Box>
+          <Divider sx={{ mb: 1 }} />
+          <List dense disablePadding>
+            {PRESET_PENALTIES.map((preset, i) => {
+              const alreadyExists = catalog.some(e => e.name.toLowerCase() === preset.name.toLowerCase());
+              return (
+                <ListItem
+                  key={i}
+                  disablePadding
+                  sx={{ opacity: alreadyExists ? 0.45 : 1 }}
+                  secondaryAction={
+                    <Typography variant="body2" color="text.secondary" sx={{ pr: 1 }}>
+                      {preset.amount > 0 ? `${preset.amount.toFixed(2)} €` : '—'}
+                    </Typography>
+                  }
+                >
+                  <ListItemIcon sx={{ minWidth: 36 }}>
+                    <Checkbox
+                      edge="start"
+                      size="small"
+                      checked={selectedPresets.includes(preset)}
+                      disabled={alreadyExists}
+                      onChange={() => togglePreset(preset)}
+                    />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={preset.name}
+                    secondary={alreadyExists ? 'Bereits vorhanden' : preset.description}
+                    primaryTypographyProps={{ variant: 'body2' }}
+                    secondaryTypographyProps={{ variant: 'caption' }}
+                  />
+                </ListItem>
+              );
+            })}
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTemplateDialog(false)}>Abbrechen</Button>
+          <Button
+            variant="contained"
+            onClick={importPresets}
+            disabled={importingPresets || selectedPresets.length === 0}
+            startIcon={importingPresets ? <CircularProgress size={16} /> : <PlaylistAdd />}
+          >
+            {selectedPresets.length > 0 ? `${selectedPresets.length} importieren` : 'Importieren'}
           </Button>
         </DialogActions>
       </Dialog>
