@@ -197,6 +197,17 @@ const Penalties = () => {
 
       {selectedTeamId && (
         <>
+          <Button
+            variant="contained"
+            size="large"
+            startIcon={<Add />}
+            fullWidth
+            sx={{ mb: 3, py: 1.5, fontSize: '1.1rem' }}
+            onClick={() => { setAssignForm({ playerId: '', catalogEntryId: '', customName: '', amount: '', note: '' }); setAssignDialog(true); }}
+          >
+            Strafe vergeben
+          </Button>
+
           <Grid container spacing={2} sx={{ mb: 3 }}>
             <Grid item xs={12} sm={4}>
               <Paper elevation={2} sx={{ p: 2, textAlign: 'center', bgcolor: 'error.light' }}>

@@ -299,16 +299,7 @@ const TeamDetail = () => {
         </Typography>
         
         {isCoach && (
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button
-              variant="outlined"
-              color="warning"
-              startIcon={<Gavel />}
-              component={RouterLink}
-              to={`/coach/penalties?team=${team._id}`}
-            >
-              Strafenkatalog
-            </Button>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'flex-end' }}>
             <Button
               variant="outlined"
               color="primary"
@@ -317,6 +308,15 @@ const TeamDetail = () => {
               to={`/coach/teams/edit/${team._id}`}
             >
               Bearbeiten
+            </Button>
+            <Button
+              variant="outlined"
+              color="warning"
+              startIcon={<Gavel />}
+              component={RouterLink}
+              to={`/coach/penalties?team=${team._id}`}
+            >
+              Strafenkatalog
             </Button>
           </Box>
         )}
