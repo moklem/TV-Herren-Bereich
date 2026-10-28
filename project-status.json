@@ -337,8 +337,8 @@
       ],
       "filesAdded": [],
       "filesDeleted": [],
-      "summary": "Fix PDF import 404 from OpenRouter: switched removed model stepfun/step-3.5-flash:free to google/gemma-4-31b-it:free and include OpenRouter response body in error message",
-      "impact": "Spielplan PDF upload works again; future OpenRouter errors show their cause in the response"
+      "summary": "Fix PDF import OpenRouter errors: removed model stepfun/step-3.5-flash:free (404) replaced by a fallback chain of free models (429 rate limit on Google AI Studio), optional OPENROUTER_MODEL env var tried first, and OpenRouter response body included in error message",
+      "impact": "Spielplan PDF upload keeps working when a single free model is rate-limited or removed; errors show their cause in the response"
     },
     {
       "timestamp": "2026-02-25T00:00:00.000Z",

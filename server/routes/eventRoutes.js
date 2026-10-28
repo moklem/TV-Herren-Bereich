@@ -331,27 +331,50 @@ router.post('/parse-pdf', protect, coach, (req, res, next) => {
     }
 
     // LLM-based match extraction via OpenRouter
-    const llmRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://inteam.onrender.com',
-        'X-Title': 'InTeam Volleyball'
-      },
-      body: JSON.stringify({
-        model: 'google/gemma-4-31b-it:free',
-        messages: [{
-          role: 'user',
-          content: `Extract all volleyball match entries from this German schedule PDF text. Return ONLY a valid JSON array with no other text or markdown. Each element must have: {"nr": number, "datum": "DD.MM.YYYY", "zeit": "HH:MM", "teamA": "string", "teamB": "string", "location": "string"}\n\nPDF Text:\n${text}`
-        }],
-        temperature: 0.1
-      })
-    });
+    // Free models are frequently rate-limited or removed, so try several in order.
+    // OPENROUTER_MODEL (optional env var) is tried first, e.g. a paid model.
+    const models = [
+      process.env.OPENROUTER_MODEL,
+      'google/gemma-4-31b-it:free',
+      'nvidia/nemotron-3-ultra-550b-a55b:free',
+      'google/gemma-4-26b-a4b-it:free'
+    ].filter(Boolean);
 
-    if (!llmRes.ok) {
-      const errText = await llmRes.text().catch(() => '');
-      throw new Error(`OpenRouter API error: ${llmRes.status} - ${errText.slice(0, 300)}`);
+    let llmRes;
+    let lastError = '';
+    for (const model of models) {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://inteam.onrender.com',
+          'X-Title': 'InTeam Volleyball'
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{
+            role: 'user',
+            content: `Extract all volleyball match entries from this German schedule PDF text. Return ONLY a valid JSON array with no other text or markdown. Each element must have: {"nr": number, "datum": "DD.MM.YYYY", "zeit": "HH:MM", "teamA": "string", "teamB": "string", "location": "string"}\n\nPDF Text:\n${text}`
+          }],
+          temperature: 0.1
+        })
+      });
+
+      if (res.ok) {
+        llmRes = res;
+        break;
+      }
+
+      const errText = await res.text().catch(() => '');
+      lastError = `OpenRouter API error (${model}): ${res.status} - ${errText.slice(0, 300)}`;
+      console.error(lastError);
+      // Auth/request errors will fail for every model; only fall through on rate limit, missing model, or provider errors
+      if (res.status !== 429 && res.status !== 404 && res.status < 500) break;
+    }
+
+    if (!llmRes) {
+      throw new Error(lastError);
     }
 
     const llmData = await llmRes.json();
