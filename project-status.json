@@ -2,7 +2,7 @@
   "metadata": {
     "projectName": "volleyball-app",
     "description": "Eine Progressive Web App zur Verwaltung von Volleyball-Teams und zur Integration von Jugendspielern",
-    "version": "1.9.5",
+    "version": "1.9.6",
     "type": "Progressive Web Application",
     "primaryLanguage": "JavaScript",
     "techStack": {
@@ -34,7 +34,7 @@
       "database": "MongoDB Atlas",
       "region": "Frankfurt"
     },
-    "lastAnalyzed": "2026-06-11T00:00:00.000Z"
+    "lastAnalyzed": "2026-10-28T00:00:00.000Z"
   },
   "developmentPhase": "production",
   "completionPercentage": 99,
@@ -328,6 +328,17 @@
       "filesDeleted": [],
       "summary": "Completed Auto-Anmeldung and Strafenkatalog features — frontend finishing touches",
       "impact": "Desktop navbar now shows Strafenkatalog button. Player TeamDetail page shows team penalty leaderboard. EditEvent already had FormHelperText — no change needed."
+    },
+    {
+      "timestamp": "2026-10-28T00:00:00.000Z",
+      "filesModified": [
+        "server/routes/eventRoutes.js",
+        "project-status.json"
+      ],
+      "filesAdded": [],
+      "filesDeleted": [],
+      "summary": "Fix PDF import 404 from OpenRouter: switched removed model stepfun/step-3.5-flash:free to google/gemma-4-31b-it:free and include OpenRouter response body in error message",
+      "impact": "Spielplan PDF upload works again; future OpenRouter errors show their cause in the response"
     },
     {
       "timestamp": "2026-02-25T00:00:00.000Z",

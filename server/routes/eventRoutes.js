@@ -340,7 +340,7 @@ router.post('/parse-pdf', protect, coach, (req, res, next) => {
         'X-Title': 'InTeam Volleyball'
       },
       body: JSON.stringify({
-        model: 'stepfun/step-3.5-flash:free',
+        model: 'google/gemma-4-31b-it:free',
         messages: [{
           role: 'user',
           content: `Extract all volleyball match entries from this German schedule PDF text. Return ONLY a valid JSON array with no other text or markdown. Each element must have: {"nr": number, "datum": "DD.MM.YYYY", "zeit": "HH:MM", "teamA": "string", "teamB": "string", "location": "string"}\n\nPDF Text:\n${text}`
@@ -350,7 +350,8 @@ router.post('/parse-pdf', protect, coach, (req, res, next) => {
     });
 
     if (!llmRes.ok) {
-      throw new Error(`OpenRouter API error: ${llmRes.status}`);
+      const errText = await llmRes.text().catch(() => '');
+      throw new Error(`OpenRouter API error: ${llmRes.status} - ${errText.slice(0, 300)}`);
     }
 
     const llmData = await llmRes.json();
