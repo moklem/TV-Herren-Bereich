@@ -293,13 +293,8 @@ html, body {
   }
 }
 
-/* Fix for scrollable select menus */
-.MuiMenu-list {
-  max-height: calc(100vh - 96px) !important;
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
-  overscroll-behavior: contain !important;
-}
+/* Select menus: the menu paper is the only scroll container (set via MenuProps/theme).
+   The inner list must NOT scroll itself, otherwise touch drags don't reach the paper. */
 
 /* Ensure form controls work properly */
 .MuiFormControl-root {

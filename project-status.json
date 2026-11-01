@@ -2,7 +2,7 @@
   "metadata": {
     "projectName": "volleyball-app",
     "description": "Eine Progressive Web App zur Verwaltung von Volleyball-Teams und zur Integration von Jugendspielern",
-    "version": "1.10.1",
+    "version": "1.10.2",
     "type": "Progressive Web Application",
     "primaryLanguage": "JavaScript",
     "techStack": {
@@ -313,6 +313,18 @@
   ],
   "inProgressFeatures": [],
   "recentChanges": [
+    {
+      "timestamp": "2026-11-01T14:00:00.000Z",
+      "filesModified": [
+        "client/src/index.js",
+        "client/src/index.css",
+        "project-status.json"
+      ],
+      "filesAdded": [],
+      "filesDeleted": [],
+      "summary": "Root-cause fix for broken Select/Menu dropdowns on mobile. Removed global theme overrides that forced position/left/transform/margin !important on Menu/Popover papers (MuiPaper override, MuiSelect default MenuProps, MuiMenu/MuiPopover paper), removed disablePortal and disableScrollLock from the default Select MenuProps, and removed the index.css rule that made .MuiMenu-list a second scroll container with overscroll-behavior: contain (which blocked touch scrolling from reaching the menu paper).",
+      "impact": "All select menus (incl. team filter on coach Termine page) are positioned by MUI below their field and scroll normally by touch on mobile."
+    },
     {
       "timestamp": "2026-11-01T13:00:00.000Z",
       "filesModified": [

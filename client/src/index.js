@@ -48,8 +48,7 @@ MuiSelect: {
   defaultProps: {
     // Remove the native detection and use MenuProps instead
     MenuProps: {
-      // Ensure the menu is properly positioned and clickable
-      disablePortal: true,
+      // Let MUI position the menu itself (portal, anchored below the field)
       keepMounted: false,
       anchorOrigin: {
         vertical: 'bottom',
@@ -59,32 +58,15 @@ MuiSelect: {
         vertical: 'top',
         horizontal: 'left',
       },
+      marginThreshold: 16,
       PaperProps: {
         style: {
           maxHeight: '50vh',
+          maxWidth: 'calc(100vw - 32px)',
         },
         sx: {
-          // Force higher z-index
           zIndex: 1350,
-          // Ensure it's clickable
           pointerEvents: 'auto',
-          // Better positioning on mobile
-          '@media (max-width: 600px)': {
-            position: 'fixed !important',
-            left: '0 !important',
-            right: '0 !important',
-            margin: '0 16px !important',
-            maxWidth: 'calc(100vw - 32px) !important',
-          },
-        },
-      },
-      // Disable scroll lock to prevent issues
-      disableScrollLock: true,
-      // Ensure backdrop is clickable
-      BackdropProps: {
-        style: {
-          position: 'fixed',
-          touchAction: 'auto',
         },
       },
     },
@@ -133,10 +115,9 @@ MuiSelect: {
           overflowY: 'auto',
           overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
-          // Ensure visibility on mobile
+          // Limit height on mobile (position is handled by MUI)
           '@media (max-width: 600px)': {
             maxHeight: '50vh !important',
-            position: 'fixed !important',
           },
         },
         list: {
@@ -193,7 +174,6 @@ MuiSelect: {
           // Mobile specific
           '@media (max-width: 600px)': {
             maxHeight: '70vh !important',
-            margin: '16px !important',
           },
         },
       },
@@ -289,25 +269,6 @@ MuiSelect: {
           pointerEvents: 'auto',
           '&:hover': {
             cursor: 'pointer',
-          },
-        },
-      },
-    },
-    // Paper component for better mobile menus
-    MuiPaper: {
-      styleOverrides: {
-        root: {
-          // Ensure paper components are properly layered
-          '&.MuiMenu-paper, &.MuiPopover-paper': {
-            overscrollBehavior: 'contain',
-            '@media (max-width: 600px)': {
-              // Better mobile positioning
-              position: 'absolute !important',
-              left: '50% !important',
-              transform: 'translateX(-50%) !important',
-              width: 'calc(100vw - 32px) !important',
-              maxWidth: '400px !important',
-            },
           },
         },
       },
