@@ -48,6 +48,8 @@ import {
   OutlinedInput,
   Checkbox,
   ListItemText,
+  List,
+  ListItem,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -73,6 +75,9 @@ const Events = () => {
   const [filterType, setFilterType] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [deleteRecurring, setDeleteRecurring] = useState(false);
+  const [seriesDialogOpen, setSeriesDialogOpen] = useState(false);
+  const [seriesToDelete, setSeriesToDelete] = useState(null);
+  const [seriesDeleteError, setSeriesDeleteError] = useState('');
 
   // Set default filter to coach's teams when teams data loads
   useEffect(() => {
@@ -127,6 +132,60 @@ const Events = () => {
 
     return filtered;
   }, [events, tabValue, searchTerm, filterTeam, filterType]);
+
+  // All series (grouped by recurringGroupId) of the coach's teams
+  const seriesList = useMemo(() => {
+    const coachTeamIds = coachTeams.map(team => team._id);
+    const groups = {};
+
+    events.forEach(event => {
+      if (!event.recurringGroupId || !coachTeamIds.includes(event.team?._id)) return;
+      const groupId = String(event.recurringGroupId);
+      if (!groups[groupId]) groups[groupId] = [];
+      groups[groupId].push(event);
+    });
+
+    const now = new Date();
+    return Object.entries(groups)
+      .map(([groupId, groupEvents]) => {
+        const sorted = [...groupEvents].sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+        return {
+          groupId,
+          title: sorted[0].title,
+          teamName: sorted[0].team.name,
+          type: sorted[0].type,
+          pattern: (sorted.find(e => e.recurringPattern) || {}).recurringPattern,
+          count: sorted.length,
+          upcomingCount: sorted.filter(e => new Date(e.startTime) > now).length,
+          firstStart: sorted[0].startTime,
+          lastStart: sorted[sorted.length - 1].startTime,
+          // Any event of the series can be used to delete the whole series
+          anyEventId: sorted[0]._id
+        };
+      })
+      .sort((a, b) => new Date(b.lastStart) - new Date(a.lastStart));
+  }, [events, coachTeams]);
+
+  const handleDeleteSeries = async () => {
+    if (!seriesToDelete) return;
+    try {
+      setSeriesDeleteError('');
+      await deleteEventMutation.mutateAsync({
+        eventId: seriesToDelete.anyEventId,
+        deleteRecurring: true
+      });
+      setSeriesToDelete(null);
+    } catch (error) {
+      console.error('Error deleting series:', error);
+      setSeriesDeleteError(error.response?.data?.message || 'Die Serie konnte nicht gelöscht werden.');
+    }
+  };
+
+  const handleCloseSeriesDialog = () => {
+    setSeriesDialogOpen(false);
+    setSeriesToDelete(null);
+    setSeriesDeleteError('');
+  };
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -273,6 +332,14 @@ const getAttendanceStatusChip = (event) => {
         </Typography>
 
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button
+            variant="outlined"
+            color="primary"
+            startIcon={<Repeat />}
+            onClick={() => setSeriesDialogOpen(true)}
+          >
+            Serien verwalten
+          </Button>
           <Button
             variant="outlined"
             color="primary"
@@ -472,10 +539,97 @@ const getAttendanceStatusChip = (event) => {
           </Button>
         </DialogActions>
       </Dialog>
-      
 
+      {/* Series Management Dialog */}
+      <Dialog
+        open={seriesDialogOpen}
+        onClose={handleCloseSeriesDialog}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Serien verwalten</DialogTitle>
+        <DialogContent>
+          {seriesToDelete ? (
+            <Box>
+              <Typography>
+                Möchten Sie die gesamte Serie &ldquo;{seriesToDelete.title}&rdquo; ({seriesToDelete.teamName}) mit
+                {' '}{seriesToDelete.count} Terminen wirklich löschen? Dies schließt vergangene und kommende Termine ein
+                und kann nicht rückgängig gemacht werden.
+              </Typography>
+              {seriesDeleteError && (
+                <Typography color="error" sx={{ mt: 2 }}>
+                  {seriesDeleteError}
+                </Typography>
+              )}
+            </Box>
+          ) : seriesList.length > 0 ? (
+            <List disablePadding>
+              {seriesList.map(series => (
+                <ListItem
+                  key={series.groupId}
+                  divider
+                  disableGutters
+                  secondaryAction={
+                    <IconButton
+                      edge="end"
+                      color="error"
+                      aria-label="Serie löschen"
+                      onClick={() => setSeriesToDelete(series)}
+                    >
+                      <Delete />
+                    </IconButton>
+                  }
+                >
+                  <ListItemText
+                    primary={series.title}
+                    secondary={
+                      `${series.teamName} · ${series.type === 'Training' ? 'Training' : 'Spiel'}` +
+                      `${SERIES_PATTERN_LABELS[series.pattern] ? ` · ${SERIES_PATTERN_LABELS[series.pattern]}` : ''}\n` +
+                      `${new Date(series.firstStart).toLocaleDateString('de-DE')} – ` +
+                      `${new Date(series.lastStart).toLocaleDateString('de-DE')} · ` +
+                      `${series.count} Termine (${series.upcomingCount} kommend)`
+                    }
+                    secondaryTypographyProps={{ sx: { whiteSpace: 'pre-line' } }}
+                    sx={{ pr: 5 }}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          ) : (
+            <Typography color="text.secondary">
+              Keine Serien gefunden.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          {seriesToDelete ? (
+            <>
+              <Button onClick={() => { setSeriesToDelete(null); setSeriesDeleteError(''); }}>
+                Zurück
+              </Button>
+              <Button
+                onClick={handleDeleteSeries}
+                color="error"
+                disabled={deleteEventMutation.isPending}
+              >
+                Serie löschen
+              </Button>
+            </>
+          ) : (
+            <Button onClick={handleCloseSeriesDialog}>
+              Schließen
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
     </Box>
   );
+};
+
+const SERIES_PATTERN_LABELS = {
+  weekly: 'Wöchentlich',
+  biweekly: 'Alle 2 Wochen',
+  monthly: 'Monatlich'
 };
 
 // Event Card Component

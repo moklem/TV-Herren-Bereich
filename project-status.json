@@ -2,7 +2,7 @@
   "metadata": {
     "projectName": "volleyball-app",
     "description": "Eine Progressive Web App zur Verwaltung von Volleyball-Teams und zur Integration von Jugendspielern",
-    "version": "1.9.7",
+    "version": "1.10.0",
     "type": "Progressive Web Application",
     "primaryLanguage": "JavaScript",
     "techStack": {
@@ -34,7 +34,7 @@
       "database": "MongoDB Atlas",
       "region": "Frankfurt"
     },
-    "lastAnalyzed": "2026-11-01T00:00:00.000Z"
+    "lastAnalyzed": "2026-11-01T12:00:00.000Z"
   },
   "developmentPhase": "production",
   "completionPercentage": 99,
@@ -313,6 +313,17 @@
   ],
   "inProgressFeatures": [],
   "recentChanges": [
+    {
+      "timestamp": "2026-11-01T12:00:00.000Z",
+      "filesModified": [
+        "client/src/pages/coach/Events.js",
+        "project-status.json"
+      ],
+      "filesAdded": [],
+      "filesDeleted": [],
+      "summary": "Added a 'Serien verwalten' dialog to the coach Termine page. It lists all recurring series of the coach's teams (grouped by recurringGroupId, with team, type, pattern, date range and number of total/upcoming events) and lets coaches delete a whole series directly after a confirmation step, without having to find an event of that series first. Uses the existing DELETE /api/events/:id?deleteRecurring=true endpoint, so no backend change.",
+      "impact": "Series can now be deleted even when the starting event is unknown or no longer easy to find in the event list."
+    },
     {
       "timestamp": "2026-11-01T00:00:00.000Z",
       "filesModified": [
