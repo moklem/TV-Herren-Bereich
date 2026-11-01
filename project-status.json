@@ -2,7 +2,7 @@
   "metadata": {
     "projectName": "volleyball-app",
     "description": "Eine Progressive Web App zur Verwaltung von Volleyball-Teams und zur Integration von Jugendspielern",
-    "version": "1.9.6",
+    "version": "1.9.7",
     "type": "Progressive Web Application",
     "primaryLanguage": "JavaScript",
     "techStack": {
@@ -34,7 +34,7 @@
       "database": "MongoDB Atlas",
       "region": "Frankfurt"
     },
-    "lastAnalyzed": "2026-10-28T00:00:00.000Z"
+    "lastAnalyzed": "2026-11-01T00:00:00.000Z"
   },
   "developmentPhase": "production",
   "completionPercentage": 99,
@@ -313,6 +313,21 @@
   ],
   "inProgressFeatures": [],
   "recentChanges": [
+    {
+      "timestamp": "2026-11-01T00:00:00.000Z",
+      "filesModified": [
+        "server/routes/eventRoutes.js",
+        "server/server.js",
+        "project-status.json"
+      ],
+      "filesAdded": [
+        "server/utils/berlinTime.js",
+        "server/utils/dstEventFix.js"
+      ],
+      "filesDeleted": [],
+      "summary": "Permanent fix for summer/winter time shift of recurring events. Root cause: the server (UTC) generated recurring instances and updated whole series with setDate/setMonth/setHours, which keeps the UTC time of day constant, so instances after a time switch showed one hour off. Recurring generation and the 'update all events in series' path now calculate on the Europe/Berlin wall clock (Intl based helpers in berlinTime.js, no new packages). dstEventFix.js runs automatically 10s after the MongoDB connection and realigns existing broken recurring instances (same UTC time of day as the series start but different Berlin offset, startTime on/after the last DST switch, not flagged by the 2025 script); single events, hand-edited instances and events created after the switch in the same time period are never touched. Updated instances get the _fixesApplied marker 'dst-recurring-realign' and their reminders are rescheduled. DST_FIX_DRY_RUN=true only logs.",
+      "impact": "Recurring trainings/games keep their local time across all future summer/winter switches, and the events currently showing one hour early are corrected automatically on the next server start - no manual script needed."
+    },
     {
       "timestamp": "2026-06-11T00:00:00.000Z",
       "filesModified": [
@@ -1246,10 +1261,10 @@
   ],
   "codeStatistics": {
     "totalFiles": {
-      "javascript": 124,
+      "javascript": 126,
       "markdown": 8,
       "configuration": 10,
-      "total": 142
+      "total": 144
     },
     "linesOfCode": {
       "frontend": 32354,
@@ -1258,7 +1273,7 @@
     },
     "fileBreakdown": {
       "clientJavaScript": 90,
-      "serverJavaScript": 34,
+      "serverJavaScript": 36,
       "components": 45,
       "pages": 35,
       "contexts": 8,

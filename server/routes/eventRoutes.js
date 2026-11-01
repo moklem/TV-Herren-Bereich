@@ -8,6 +8,15 @@ const { sendGuestInvitation } = require('../controllers/notificationController')
 const { scheduleEventNotifications } = require('../utils/notificationQueue');
 const { processTrainingPoolAutoInvite, processVotingDeadlineAutoDecline } = require('../utils/trainingPoolAutoInvite');
 const { toBerlinTime, formatBerlinTime, nowInBerlin } = require('../utils/timezoneUtils');
+const {
+  berlinWeekday,
+  berlinHoursMinutes,
+  addBerlinDays,
+  addBerlinMonths,
+  setBerlinHoursMinutes,
+  berlinWallDiffMs,
+  addBerlinWallMs
+} = require('../utils/berlinTime');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const PushSubscription = require('../models/PushSubscription');
@@ -32,15 +41,16 @@ const generateRecurringEvents = (baseEvent, pattern, endDate) => {
   const endDateTime = new Date(baseEvent.endTime);
   const recurringEndDate = new Date(endDate);
   
-  // Calculate the time difference between start and end
-  const timeDiff = endDateTime - startDate;
-  
+  // Calculate the Berlin wall-clock difference between start and end
+  // (wall-clock based so the local times stay identical across summer/winter time switches)
+  const timeDiff = berlinWallDiffMs(startDate, endDateTime);
+
   // Calculate voting deadline offset from start time if it exists
   let votingDeadlineOffset = null;
   if (baseEvent.votingDeadline) {
     const baseVotingDeadline = new Date(baseEvent.votingDeadline);
     const baseStartTime = new Date(baseEvent.startTime);
-    votingDeadlineOffset = baseVotingDeadline - baseStartTime;
+    votingDeadlineOffset = berlinWallDiffMs(baseStartTime, baseVotingDeadline);
   }
   
   // Generate events based on pattern
@@ -65,23 +75,23 @@ const generateRecurringEvents = (baseEvent, pattern, endDate) => {
     const eventData = {
       ...baseEvent,
       startTime: new Date(currentDate),
-      endTime: new Date(currentDate.getTime() + timeDiff),
+      endTime: addBerlinWallMs(currentDate, timeDiff),
       isRecurringInstance: true,
       originalStartTime: baseEvent.startTime
     };
-    
+
     // Adjust voting deadline based on the offset from start time
     if (votingDeadlineOffset !== null) {
-      eventData.votingDeadline = new Date(currentDate.getTime() + votingDeadlineOffset);
+      eventData.votingDeadline = addBerlinWallMs(currentDate, votingDeadlineOffset);
     }
-    
+
     events.push(eventData);
-    
-    // Move to next occurrence
+
+    // Move to next occurrence (keeping the Berlin wall-clock time)
     if (pattern === 'monthly') {
-      currentDate.setMonth(currentDate.getMonth() + 1);
+      currentDate = addBerlinMonths(currentDate, 1);
     } else {
-      currentDate.setDate(currentDate.getDate() + increment);
+      currentDate = addBerlinDays(currentDate, increment);
     }
   }
   
@@ -781,27 +791,24 @@ router.put('/:id', protect, coach, async (req, res) => {
             // Update weekday if provided
             if (weekday !== undefined) {
               const currentDate = new Date(recurringEvent.startTime);
-              const currentDay = currentDate.getDay();
+              const currentDay = berlinWeekday(currentDate);
               const dayDiff = weekday - currentDay;
-              
-              // Adjust the date to the new weekday
-              const newStartDate = new Date(currentDate);
-              newStartDate.setDate(currentDate.getDate() + dayDiff);
-              
+
+              // Adjust the date to the new weekday (Berlin wall-clock, DST safe)
+              let newStartDate = addBerlinDays(currentDate, dayDiff);
+
               // Apply time changes if provided
               if (startTime) {
-                const newStartTime = new Date(startTime);
-                newStartDate.setHours(newStartTime.getHours(), newStartTime.getMinutes());
+                const { hours, minutes } = berlinHoursMinutes(new Date(startTime));
+                newStartDate = setBerlinHoursMinutes(newStartDate, hours, minutes);
               }
-              
+
               recurringEvent.startTime = newStartDate;
-              
+
               // Update end time accordingly
               if (endTime) {
-                const newEndTime = new Date(endTime);
-                const newEndDate = new Date(newStartDate);
-                newEndDate.setHours(newEndTime.getHours(), newEndTime.getMinutes());
-                recurringEvent.endTime = newEndDate;
+                const { hours, minutes } = berlinHoursMinutes(new Date(endTime));
+                recurringEvent.endTime = setBerlinHoursMinutes(newStartDate, hours, minutes);
               } else {
                 // Maintain the same duration
                 const duration = new Date(recurringEvent.endTime) - new Date(recurringEvent.originalStartTime || currentDate);
@@ -810,17 +817,13 @@ router.put('/:id', protect, coach, async (req, res) => {
             } else {
               // Only time changes, no weekday change
               if (startTime) {
-                const newStartTime = new Date(startTime);
-                const originalStartTime = new Date(recurringEvent.startTime);
-                originalStartTime.setHours(newStartTime.getHours(), newStartTime.getMinutes());
-                recurringEvent.startTime = originalStartTime;
+                const { hours, minutes } = berlinHoursMinutes(new Date(startTime));
+                recurringEvent.startTime = setBerlinHoursMinutes(new Date(recurringEvent.startTime), hours, minutes);
               }
-              
+
               if (endTime) {
-                const newEndTime = new Date(endTime);
-                const originalEndTime = new Date(recurringEvent.endTime);
-                originalEndTime.setHours(newEndTime.getHours(), newEndTime.getMinutes());
-                recurringEvent.endTime = originalEndTime;
+                const { hours, minutes } = berlinHoursMinutes(new Date(endTime));
+                recurringEvent.endTime = setBerlinHoursMinutes(new Date(recurringEvent.endTime), hours, minutes);
               }
             }
             
@@ -832,11 +835,11 @@ router.put('/:id', protect, coach, async (req, res) => {
                 const originalEventStartTime = new Date(event.startTime);
                 const eventStartTime = new Date(recurringEvent.startTime);
                 
-                // Calculate the offset between the voting deadline and the original event start time
-                const offset = votingDeadlineDate.getTime() - originalEventStartTime.getTime();
-                
+                // Calculate the (Berlin wall-clock) offset between the voting deadline and the original event start time
+                const offset = berlinWallDiffMs(originalEventStartTime, votingDeadlineDate);
+
                 // Apply the same offset to this recurring event
-                recurringEvent.votingDeadline = new Date(eventStartTime.getTime() + offset);
+                recurringEvent.votingDeadline = addBerlinWallMs(eventStartTime, offset);
               } else {
                 // Clear voting deadline
                 recurringEvent.votingDeadline = null;

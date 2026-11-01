@@ -307,7 +307,15 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/volleyball-
 })
 .then(() => {
   console.log('MongoDB connected');
-  
+
+  // Automatically realign recurring events that drifted by an hour after a summer/winter time switch
+  const { fixRecurringEventDstShift } = require('./utils/dstEventFix');
+  setTimeout(() => {
+    fixRecurringEventDstShift().catch(err =>
+      console.error('[DST Fix] Failed to run fix:', err)
+    );
+  }, 10000);
+
   // Run data fixes in production
   if (process.env.NODE_ENV === 'production') {
     const { fixUninvitedTeamPlayers } = require('./utils/dataFixes');

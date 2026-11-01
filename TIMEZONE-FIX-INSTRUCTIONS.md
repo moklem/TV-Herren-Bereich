@@ -135,12 +135,16 @@ This ensures events are only fixed once, even if the script is run multiple time
 
 ## Future DST Changes
 
-This fix is **permanent**. The system will now automatically handle:
-- Future summer/winter time transitions
-- Events created during summer time
-- Events created during winter time
+> **Update 2026-11-01:** The one-time script above was not enough. The real cause was the
+> recurring-event generator (and the "update whole series" path), which kept the **UTC** time of
+> day constant. It now works on the Europe/Berlin wall clock (`server/utils/berlinTime.js`), and
+> `server/utils/dstEventFix.js` realigns already broken recurring instances automatically on
+> every server start. The manual script `fix-timezone-issue.js` must **not** be run again - it
+> shifts every event unconditionally. Set `DST_FIX_DRY_RUN=true` to only log what the automatic
+> fix would change.
 
-No additional migrations will be needed for future DST changes.
+Single events are not affected: the browser sends the exact moment, so they stay correct across
+summer/winter time switches.
 
 ## Files Modified
 
