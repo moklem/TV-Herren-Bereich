@@ -428,6 +428,28 @@ const getAttendanceStatusChip = (event) => {
                       .map(team => team.name);
                     return selectedTeamNames.join(', ');
                   }}
+                  MenuProps={{
+                    anchorOrigin: { vertical: 'bottom', horizontal: 'left' },
+                    transformOrigin: { vertical: 'top', horizontal: 'left' },
+                    marginThreshold: 16,
+                    PaperProps: {
+                      sx: {
+                        maxHeight: { xs: '50vh', sm: 320 },
+                        maxWidth: 'calc(100vw - 32px)',
+                        overflowY: 'auto',
+                        WebkitOverflowScrolling: 'touch',
+                        overscrollBehavior: 'contain'
+                      }
+                    },
+                    MenuListProps: { sx: { py: 0 } }
+                  }}
+                  sx={{
+                    '& .MuiSelect-select': {
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }
+                  }}
                 >
                   <MenuItem value="all">
                     <Checkbox 

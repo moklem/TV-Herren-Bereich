@@ -2,7 +2,7 @@
   "metadata": {
     "projectName": "volleyball-app",
     "description": "Eine Progressive Web App zur Verwaltung von Volleyball-Teams und zur Integration von Jugendspielern",
-    "version": "1.10.0",
+    "version": "1.10.1",
     "type": "Progressive Web Application",
     "primaryLanguage": "JavaScript",
     "techStack": {
@@ -34,7 +34,7 @@
       "database": "MongoDB Atlas",
       "region": "Frankfurt"
     },
-    "lastAnalyzed": "2026-11-01T12:00:00.000Z"
+    "lastAnalyzed": "2026-11-01T13:00:00.000Z"
   },
   "developmentPhase": "production",
   "completionPercentage": 99,
@@ -313,6 +313,17 @@
   ],
   "inProgressFeatures": [],
   "recentChanges": [
+    {
+      "timestamp": "2026-11-01T13:00:00.000Z",
+      "filesModified": [
+        "client/src/pages/coach/Events.js",
+        "project-status.json"
+      ],
+      "filesAdded": [],
+      "filesDeleted": [],
+      "summary": "Fixed the team filter dropdown (multi-select) on the coach Termine page for mobile: the menu is now anchored below the field, limited to 50vh height and viewport width with touch scrolling (contained overscroll), and the selected-teams display is truncated with an ellipsis instead of overflowing.",
+      "impact": "Team selection menu is positioned correctly and scrolls smoothly on mobile devices."
+    },
     {
       "timestamp": "2026-11-01T12:00:00.000Z",
       "filesModified": [
